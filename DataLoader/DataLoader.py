@@ -1,9 +1,10 @@
-import numpy as np #
-
+import numpy as np
+from config.config import PATH
+import kagglehub
 class DataLoader:
 
     def __init__(self):
-        pass
+        self.path=kagglehub.dataset_download(PATH)
 
     def get_description(self) -> str:
         pass
@@ -16,5 +17,8 @@ class DataLoader:
 
     def prepare_dataset(self)->np.ndarray:
         pass
+
+
+
 
 
