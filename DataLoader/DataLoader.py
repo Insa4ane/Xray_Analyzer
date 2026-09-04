@@ -1,5 +1,4 @@
 import os
-import logging
 import numpy as np
 from config.config import PATH, CATEGORIES
 import kagglehub
@@ -15,7 +14,7 @@ class DataLoader:
     def dataset_download(self):
         return kagglehub.dataset_download(PATH)
 
-    def process_image(self, image_path, img_size=224):
+    def process_image(self, image_path:str, img_size:int=224):
         try:
             img_array = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             if img_array is None:
