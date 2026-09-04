@@ -1,4 +1,4 @@
 .idea/
 .env
 .venv/
-git rm --cached .env
+
