@@ -1,3 +1,4 @@
+
 class XrayAgent:
 
     def __init__(self, data):
@@ -7,4 +8,7 @@ class XrayAgent:
         pass
 
     def evaluate(self)-> None:
+        pass
+
+    def predict(self)-> None:
         pass

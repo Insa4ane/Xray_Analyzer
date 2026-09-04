@@ -1,6 +1,8 @@
 import os
+
 import numpy as np
-from config.config import PATH, CATEGORIES
+
+from config.config import PATH, CATEGORIES, IMG_SIZE
 import kagglehub
 import cv2
 import random
@@ -10,16 +12,17 @@ class DataLoader:
 
     def __init__(self):
         self.path=self.dataset_download()
+        self.size=IMG_SIZE
 
     def dataset_download(self):
         return kagglehub.dataset_download(PATH)
 
-    def process_image(self, image_path:str, img_size:int=224):
+    def process_image(self, image_path:str):
         try:
             img_array = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             if img_array is None:
                 return None
-            return cv2.resize(img_array, (img_size, img_size))
+            return cv2.resize(img_array, (self.size, self.size))
         except Exception as e:
             logging.warning(f"Warning! {e}")
             return None
@@ -46,10 +49,37 @@ class DataLoader:
         train = self.build_dataset(train_dir)
         test = self.build_dataset(test_dir)
         if train and test:
-            return train, test
+            X_test, y_test = self.prepare_for_training(test)
+            X_train, y_train = self.prepare_for_training(train)
+            return X_train, X_test, y_train, y_test
         else:
             logging.error(f"Error! {train} or {test} or both are empty")
             raise FileNotFoundError(f"{train} and {test} are empty")
+
+    def prepare_for_training(self, dataset:list[list]):
+        X=[]
+        y=[]
+        try:
+            for img_array, label in dataset:
+                X.append(img_array)
+                y.append(label)
+            X = np.array(X).reshape(-1, self.size, self.size, 1)/255.0
+            y=np.array(y)
+            if len(X)==len(y):
+                return X, y
+            else:
+                logging.error(f"Error! {X} != {y}")
+        except Exception as e:
+            logging.error(f"Error! We cannot  {e}")
+            return None
+
+
+
+
+
+
+
+
 
 
 

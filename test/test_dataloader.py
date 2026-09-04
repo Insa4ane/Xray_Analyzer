@@ -3,12 +3,13 @@ import cv2
 import numpy as np
 from unittest.mock import patch
 
+from numpy import dtypes
+
 from DataLoader.DataLoader import DataLoader
-from config.config import PATH
+from config.config import PATH, IMG_SIZE
 
 @pytest.fixture
 def loader_instance():
-    """Zwraca gotowy obiekt DataLoader, omijając pobieranie danych z internetu."""
     with patch("DataLoader.DataLoader.kagglehub.dataset_download", return_value="C:/fake/path"):
         return DataLoader()
 
@@ -19,6 +20,7 @@ def test_dataloader_initialization(mock_download):
 
     assert loader is not None
     assert loader.path == "C:/fake/path"
+    assert loader.size == IMG_SIZE
     mock_download.assert_called_once_with(PATH)
 
 
@@ -65,11 +67,50 @@ def test_build_dataset(mock_process, mock_listdir, mock_exist, loader_instance):
 
 
 @patch.object(DataLoader, "build_dataset")
-def test_split_data(mock_build, loader_instance):
-    mock_train_data = ["fake_train_item_1", "fake_train_item_2"]
+@patch.object(DataLoader, "prepare_for_training")
+def test_split_data(mock_prepare, mock_build, loader_instance):
+    mock_train_data = ["fake_train_item"]
     mock_test_data = ["fake_test_item"]
     mock_build.side_effect = [mock_train_data, mock_test_data]
-    train, test = loader_instance.split_data()
+    size=loader_instance.size
+    X_train_mock = np.full((size, size), 1, dtype=np.uint8)
+    y_train_mock = np.full((size,), 0, dtype=np.uint8)
 
-    assert train == mock_train_data
-    assert test == mock_test_data
+    X_test_mock = np.full((size, size), 0.25, dtype=np.uint8)
+    y_test_mock = np.full((size,), 1, dtype=np.uint8)
+
+    mock_prepare.side_effect = [
+        (X_test_mock, y_test_mock),
+        (X_train_mock, y_train_mock)
+    ]
+
+    X_train, X_test, y_train, y_test = loader_instance.split_data()
+
+    assert X_train is not None
+    assert X_test is not None
+
+    assert np.array_equal(X_train, X_train_mock)
+    assert np.array_equal(X_test, X_test_mock)
+    assert np.array_equal(y_train, y_train_mock)
+    assert np.array_equal(y_test, y_test_mock)
+
+    assert len(X_train) == len(y_train)
+    assert len(X_test) == len(y_test)
+
+def test_prepare_for_training_success(loader_instance):
+    img_size=loader_instance.size
+    fake_img=np.full((img_size,img_size), 255, dtype=np.uint8)
+    fake_dataset = [[fake_img, 1], [fake_img, 0]]
+    X, y = loader_instance.prepare_for_training(fake_dataset)
+    assert X is not None
+    assert y is not None
+    assert len(X) == len(y)
+    assert X.shape == (2, img_size, img_size, 1)
+    assert np.max(X)==1
+
+def test_prepare_for_training_exception(loader_instance):
+    faulty_dataset = [["to_nie_jest_tablica_zdjecia", 1]]
+    result = loader_instance.prepare_for_training(faulty_dataset)
+    assert result is None
+
+
