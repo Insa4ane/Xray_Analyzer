@@ -2,18 +2,18 @@ import pytest
 import cv2
 import numpy as np
 from unittest.mock import patch
-
+import torch as tc
 from numpy import dtypes
 
-from DataLoader.DataLoader import DataLoader
+from DataLoader.Loader import DataLoader
 from config.config import PATH, IMG_SIZE
 
 @pytest.fixture
 def loader_instance():
-    with patch("DataLoader.DataLoader.kagglehub.dataset_download", return_value="C:/fake/path"):
+    with patch("DataLoader.Loader.kagglehub.dataset_download", return_value="C:/fake/path"):
         return DataLoader()
 
-@patch("DataLoader.DataLoader.kagglehub.dataset_download")
+@patch("DataLoader.Loader.kagglehub.dataset_download")
 def test_dataloader_initialization(mock_download):
     mock_download.return_value = "C:/fake/path"
     loader = DataLoader()
@@ -24,7 +24,7 @@ def test_dataloader_initialization(mock_download):
     mock_download.assert_called_once_with(PATH)
 
 
-@patch("DataLoader.DataLoader.kagglehub.dataset_download")
+@patch("DataLoader.Loader.kagglehub.dataset_download")
 def test_dataloader_dataset_download(mock_download):
     mock_download.return_value = "C:/fake/path"
     loader = DataLoader()
@@ -32,8 +32,8 @@ def test_dataloader_dataset_download(mock_download):
 
     assert result == "C:/fake/path"
 
-@patch("DataLoader.DataLoader.cv2.imread")
-@patch("DataLoader.DataLoader.cv2.resize")
+@patch("DataLoader.Loader.cv2.imread")
+@patch("DataLoader.Loader.cv2.resize")
 def test_process_image(mock_resize, mock_imread, loader_instance):
     fake_img = np.zeros((300, 300), dtype=np.uint8)
     fake_resized_img = np.zeros((224, 224), dtype=np.uint8)
@@ -47,9 +47,9 @@ def test_process_image(mock_resize, mock_imread, loader_instance):
     mock_imread.assert_called_once_with(test_image_path, cv2.IMREAD_GRAYSCALE)
 
 
-@patch("DataLoader.DataLoader.os.path.exists")
-@patch("DataLoader.DataLoader.os.listdir")
-@patch("DataLoader.DataLoader.CATEGORIES", {"fake_category": 1})
+@patch("DataLoader.Loader.os.path.exists")
+@patch("DataLoader.Loader.os.listdir")
+@patch("DataLoader.Loader.CATEGORIES", {"fake_category": 1})
 @patch.object(DataLoader, "process_image")
 def test_build_dataset(mock_process, mock_listdir, mock_exist, loader_instance):
     mock_exist.return_value = True
@@ -101,12 +101,14 @@ def test_prepare_for_training_success(loader_instance):
     img_size=loader_instance.size
     fake_img=np.full((img_size,img_size), 255, dtype=np.uint8)
     fake_dataset = [[fake_img, 1], [fake_img, 0]]
+    expected_x = tc.ones((2, 1, img_size, img_size), dtype=tc.float32)
+    expected_y = tc.tensor([1, 0], dtype=tc.long)
     X, y = loader_instance.prepare_for_training(fake_dataset)
     assert X is not None
     assert y is not None
-    assert len(X) == len(y)
-    assert X.shape == (2, img_size, img_size, 1)
-    assert np.max(X)==1
+
+    assert tc.equal(X, expected_x)
+    assert tc.equal(y, expected_y)
 
 def test_prepare_for_training_exception(loader_instance):
     faulty_dataset = [["to_nie_jest_tablica_zdjecia", 1]]

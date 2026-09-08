@@ -1,7 +1,6 @@
 import os
-
 import numpy as np
-
+import torch as tc
 from config.config import PATH, CATEGORIES, IMG_SIZE
 import kagglehub
 import cv2
@@ -63,15 +62,18 @@ class DataLoader:
             for img_array, label in dataset:
                 X.append(img_array)
                 y.append(label)
-            X = np.array(X).reshape(-1, self.size, self.size, 1)/255.0
+            X = np.array(X).reshape(-1, 1, self.size, self.size)/255.0 #for pytorch (earlier, the 1 was the last (t have tought that I would use a tensorflow))
             y=np.array(y)
             if len(X)==len(y):
+                X=tc.tensor(X, dtype=tc.float32)
+                y=tc.tensor(y, dtype=tc.long)
                 return X, y
             else:
-                logging.error(f"Error! {X} != {y}")
+                logging.error(f"Error! Długość X ({len(X)}) != długość y ({len(y)})")
+                return None, None
         except Exception as e:
             logging.error(f"Error! We cannot  {e}")
-            return None
+            return None, None
 
 
 

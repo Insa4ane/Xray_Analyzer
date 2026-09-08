@@ -1,12 +1,8 @@
-from DataLoader.DataLoader import DataLoader
+from DataLoader.Loader import DataLoader
 
 def main():
-    try:
-        loader = DataLoader()
-        print(f"here is path to files: {loader.path}")
-    except Exception as e:
-        print(e)
-
+    #here is
+    pass
 
 
 if __name__ == "__main__":
