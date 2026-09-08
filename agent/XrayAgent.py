@@ -46,7 +46,7 @@ class XrayAgent(tc.nn.Module):
         x = self.classifier(x)
         return x
 
-    def fit(self, X_train, y_train, lr: float = 1e-3, batch_size: int = 32) -> dict:
+    def fit(self, X_train, y_train, lr: float = 1e-3, batch_size: int = 32, min_delta=1e-3, patience=5) -> dict:
         self.train()
         criterion = tc.nn.BCELoss()
         optimizer = tc.optim.Adam(self.parameters(), lr=lr)
@@ -54,7 +54,8 @@ class XrayAgent(tc.nn.Module):
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
         history = {'loss': [], 'accuracy': [], 'precision': [], 'recall': [], 'f1': []}
-
+        best_loss=float('inf')
+        patience_counter = 0
         for epoch in range(self.epochs):
             epoch_loss, all_targets, all_preds = self._train_one_epoch(dataloader, criterion, optimizer)
 
@@ -62,6 +63,16 @@ class XrayAgent(tc.nn.Module):
 
             for key in history.keys():
                 history[key].append(metrics[key])
+
+            if best_loss - metrics['loss'] > min_delta:
+                best_loss = metrics['loss']
+                patience_counter = 0
+            else:
+                patience_counter += 1
+
+            if patience_counter >=patience:
+                logging.info(f"Early stopping! {patience_counter} patients")
+                break
 
             logging.info(
                 f"Epoch [{epoch + 1}/{self.epochs}] - Loss: {metrics['loss']:.4f} | "
@@ -109,7 +120,7 @@ class XrayAgent(tc.nn.Module):
             predictions = self.forward(X_test)
         binary_predictions = (predictions > 0.5).float()
 
-        return binary_predictions.numpy()
+        return binary_predictions.cpu().numpy()
 
     def evaluate(self, X_test, y_test) -> dict:
         predictions = self.predict(X_test)

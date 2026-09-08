@@ -47,13 +47,21 @@ class DataLoader:
         test_dir = os.path.join(self.path, 'test')
         train = self.build_dataset(train_dir)
         test = self.build_dataset(test_dir)
-        if train and test:
-            X_test, y_test = self.prepare_for_training(test)
-            X_train, y_train = self.prepare_for_training(train)
-            return X_train, X_test, y_train, y_test
-        else:
+
+        if not train or not test:
             logging.error(f"Error! {train} or {test} or both are empty")
             raise FileNotFoundError(f"{train} and {test} are empty")
+
+        result_test = self.prepare_for_training(test)
+        result_train = self.prepare_for_training(train)
+
+        if result_test is None or result_train is None:
+            logging.error("Error! prepare_for_training failed for train and/or test set")
+            raise ValueError("prepare_for_training returned None for train and/or test set")
+
+        X_test, y_test = result_test
+        X_train, y_train = result_train
+        return X_train, X_test, y_train, y_test
 
     def prepare_for_training(self, dataset:list[list]):
         X=[]
@@ -66,7 +74,7 @@ class DataLoader:
             y=np.array(y)
             if len(X)==len(y):
                 X=tc.tensor(X, dtype=tc.float32)
-                y=tc.tensor(y, dtype=tc.long)
+                y=tc.tensor(y, dtype=tc.float32)
                 return X, y
             else:
                 logging.error(f"Error! Długość X ({len(X)}) != długość y ({len(y)})")
