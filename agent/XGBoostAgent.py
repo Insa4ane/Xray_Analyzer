@@ -10,7 +10,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_sc
 class XGBoostAgent:
 
     def __init__(self, agent, **xgb_params):
-        self.agent = agent.feature_extractor
+        self.agent = agent
         self.classifier = xgb.XGBClassifier(
             eval_metric='logloss',
             random_state=42,
