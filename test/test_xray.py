@@ -2,7 +2,6 @@ from unittest.mock import patch, MagicMock
 import torch as tc
 import pytest
 from torch.utils.data import TensorDataset, DataLoader
-
 from agent.XrayAgent import XrayAgent
 import numpy as np
 
@@ -185,6 +184,40 @@ def test_train_one_epoch(mock_forward, dummy_agent):
     assert len(preds) == 2
     assert preds[0][0] == 1.0
     assert preds[1][0] == 0.0
+
+@patch.object(XrayAgent, 'fit')
+@patch.object(XrayAgent, 'evaluate')
+def test_run_success(mock_evaluate, mock_fit, dummy_agent):
+    mock_evaluate.return_value={
+        'loss': 0.5, 'accuracy': 90.0,
+    }
+    mock_fit.return_value={
+        'test':"elo",
+        'youhooo': "yep"
+    }
+    history,result=dummy_agent.run(X_test=tc.randn(2, 1, 64, 64), y_test=tc.tensor([[1.0], [0.0]]), X_train=tc.randn(2, 1, 64, 64), y_train=tc.tensor([[1.0], [0.0]]))
+    assert history['test'] == "elo"
+    assert history['youhooo'] == "yep"
+    assert result['loss']==0.5
+    assert result['accuracy']==90.0
+
+@patch.object(XrayAgent, 'fit')
+@patch.object(XrayAgent, 'evaluate')
+def test_run_exception(mock_evaluate, mock_fit, dummy_agent):
+    mock_fit.side_effect = Exception("Error of memory leak")
+    history, result = dummy_agent.run(
+        X_train=tc.randn(2, 1, 64, 64), y_train=tc.tensor([[1.0], [0.0]]),
+        X_test=tc.randn(2, 1, 64, 64), y_test=tc.tensor([[1.0], [0.0]])
+    )
+    assert result is None
+    assert history is None
+
+
+
+
+
+
+
 
 
 

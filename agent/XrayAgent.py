@@ -1,9 +1,8 @@
 import torch as tc
-from config.config import INPUT_CHANNELS, CHANNEL_SIZES, IMG_SIZE, EPOCHS
+from config.config import INPUT_CHANNELS, CHANNEL_SIZES, IMG_SIZE, EPOCHS, BATCH_SIZE
 from torch.utils.data import TensorDataset, DataLoader
 import logging
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
-
 
 class XrayAgent(tc.nn.Module):
     def __init__(self):
@@ -14,6 +13,7 @@ class XrayAgent(tc.nn.Module):
         self.epochs=EPOCHS
         self.feature_extractor = self._build_feature_extractor()
         self.classifier = self._build_classifier()
+        self.batch_size=BATCH_SIZE
 
     def _build_feature_extractor(self):
         layers = []
@@ -46,12 +46,12 @@ class XrayAgent(tc.nn.Module):
         x = self.classifier(x)
         return x
 
-    def fit(self, X_train, y_train, lr: float = 1e-3, batch_size: int = 32, min_delta=1e-3, patience=5) -> dict:
+    def fit(self, X_train, y_train, lr: float = 1e-3, min_delta=1e-3, patience=5) -> dict:
         self.train()
         criterion = tc.nn.BCELoss()
         optimizer = tc.optim.Adam(self.parameters(), lr=lr)
         dataset=TensorDataset(X_train, y_train)
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
         history = {'loss': [], 'accuracy': [], 'precision': [], 'recall': [], 'f1': []}
         best_loss=float('inf')
@@ -127,6 +127,24 @@ class XrayAgent(tc.nn.Module):
         if tc.is_tensor(y_test):
             y_test = y_test.numpy()
         return self._score(y_test, predictions)
+
+    def run(self, X_train, X_test, y_train, y_test):
+        try:
+            history=self.fit(X_train, y_train, lr=1e-3, min_delta=1e-3, patience=5)
+            results=self.evaluate(X_test, y_test)
+            return history, results
+        except Exception as e:
+            logging.error(f"We have a problem with our neural network (method run in XrayAgent) {e}")
+            return None, None
+
+
+
+
+
+
+
+
+
 
 
 
