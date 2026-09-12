@@ -201,9 +201,9 @@ def test_run_success(mock_evaluate, mock_fit, dummy_agent):
     assert result['loss']==0.5
     assert result['accuracy']==90.0
 
+@patch("agent.XrayAgent.logging.error")
 @patch.object(XrayAgent, 'fit')
-@patch.object(XrayAgent, 'evaluate')
-def test_run_exception(mock_evaluate, mock_fit, dummy_agent):
+def test_run_exception(mock_fit, mock_logging, dummy_agent):
     mock_fit.side_effect = Exception("Error of memory leak")
     history, result = dummy_agent.run(
         X_train=tc.randn(2, 1, 64, 64), y_train=tc.tensor([[1.0], [0.0]]),
@@ -211,6 +211,67 @@ def test_run_exception(mock_evaluate, mock_fit, dummy_agent):
     )
     assert result is None
     assert history is None
+    mock_logging.assert_called_once()
+
+@patch("agent.XrayAgent.tc.save")
+def test_save_success(mock_save, dummy_agent):
+    dummy_agent.path="fake/dir"
+    dummy_agent.save_model()
+    mock_save.assert_called_once()
+    args, kwargs=mock_save.call_args
+    assert args[1]=="fake/dir"
+    assert isinstance(args[0], dict)
+
+
+@patch('agent.XrayAgent.tc.save')
+@patch('agent.XrayAgent.logging.error')
+def test_save_exception(mock_logging_error, mock_save, dummy_agent):
+    mock_save.side_effect = Exception("Error of memory leak")
+    dummy_agent.path = "test_model_path.pth"
+    dummy_agent.save_model()
+    mock_logging_error.assert_called_once()
+
+    logged_message = mock_logging_error.call_args[0][0]
+    assert "We cannot save the model (xray_agent)" in logged_message
+    assert "Error of memory leak" in logged_message
+
+@patch("agent.XrayAgent.tc.load")
+def test_load_success(mock_load, dummy_agent):
+    dummy_agent.path="fake/dir"
+    fake_state_dict=dummy_agent.state_dict()
+    mock_load.return_value= fake_state_dict
+    dummy_agent.load_model()
+    mock_load.assert_called_once_with(
+        dummy_agent.path, map_location=dummy_agent.device, weights_only=True
+    )
+    assert dummy_agent.training is False
+
+
+@patch('agent.XrayAgent.tc.load')
+@patch('agent.XrayAgent.logging.error')
+def test_load_exception(mock_logging_error, mock_torch_load, dummy_agent):
+    mock_torch_load.side_effect = Exception("We cannot find a file")
+    dummy_agent.path = "broken_path.pth"
+    dummy_agent.load_model()
+
+    mock_torch_load.assert_called_once_with("broken_path.pth", map_location=dummy_agent.device, weights_only=True)
+
+    mock_logging_error.assert_called_once()
+
+    logged_message = mock_logging_error.call_args[0][0]
+    assert "We cannot load the model (xray_agent)" in logged_message
+    assert "We cannot find a file" in logged_message
+
+@patch("agent.XrayAgent.tc.load")
+@patch.object(XrayAgent, "load_state_dict", side_effect=RuntimeError("shape mismatch"))
+def test_load_state_dict_mismatch(mock_load_state_dict, mock_load, dummy_agent):
+    mock_load.return_value = {"fake": "state_dict"}
+    dummy_agent.load_model()
+    mock_load_state_dict.assert_called_once()
+
+
+
+
 
 
 

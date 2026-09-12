@@ -1,9 +1,11 @@
 import logging
+
+import joblib
 import xgboost as xgb
 import torch as tc
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
-from config.config import BATCH_SIZE
+from config.config import BATCH_SIZE, PATH_XGB
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 
 
@@ -17,6 +19,7 @@ class XGBoostAgent:
             **xgb_params
         )
         self.batch_size=BATCH_SIZE
+        self.path=PATH_XGB
     def extract_features(self, X) -> np.ndarray:  #for xgboost
         self.agent.eval()
         dataset = TensorDataset(X)
@@ -65,6 +68,18 @@ class XGBoostAgent:
             'recall': recall_score(y_test, predictions, zero_division=0),
             'f1': f1_score(y_test, predictions, zero_division=0)
         }
+    def save_model(self):
+        try:
+            joblib.dump(self.classifier, self.path)
+            logging.info(f"Saved XGBoost model")
+        except Exception as e:
+            logging.error(f"Something's gone wrong with save model (XGBOOST) {e}")
+
+    def load_model(self):
+        try:
+            self.classifier = joblib.load(self.path)
+        except Exception as e:
+            logging.error(f"Something's gone wrong with load model XGB. {e}")
 
     def run(self, X_train, X_test, y_train, y_test):
         try:

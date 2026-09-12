@@ -1,5 +1,5 @@
 import torch as tc
-from config.config import INPUT_CHANNELS, CHANNEL_SIZES, IMG_SIZE, EPOCHS, BATCH_SIZE
+from config.config import INPUT_CHANNELS, CHANNEL_SIZES, IMG_SIZE, EPOCHS, BATCH_SIZE, PATH_MODEL
 from torch.utils.data import TensorDataset, DataLoader
 import logging
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
@@ -11,9 +11,12 @@ class XrayAgent(tc.nn.Module):
         self.channel_sizes = CHANNEL_SIZES
         self.size=IMG_SIZE
         self.epochs=EPOCHS
+        self.device = tc.device("cuda" if tc.cuda.is_available() else "cpu")  # we check that gpu is available
         self.feature_extractor = self._build_feature_extractor()
         self.classifier = self._build_classifier()
         self.batch_size=BATCH_SIZE
+        self.path=PATH_MODEL
+        self.to(self.device)
 
     def _build_feature_extractor(self):
         layers = []
@@ -35,7 +38,7 @@ class XrayAgent(tc.nn.Module):
         )
 
     def _calculate_flattened_size(self):
-        dummy_input = tc.zeros(1, self.input_channels, self.size, self.size)
+        dummy_input = tc.zeros(1, self.input_channels, self.size, self.size).to(self.device)
         with tc.no_grad():
             dummy_output = self.feature_extractor(dummy_input)
         flattened_size = dummy_output.view(1, -1).size(1)
@@ -71,7 +74,7 @@ class XrayAgent(tc.nn.Module):
                 patience_counter += 1
 
             if patience_counter >=patience:
-                logging.info(f"Early stopping! {patience_counter} patients")
+                logging.info(f"Early stopping! {patience_counter} patience")
                 break
 
             logging.info(
@@ -87,6 +90,8 @@ class XrayAgent(tc.nn.Module):
         all_preds, all_targets = [], []
 
         for batch_X, batch_y in dataloader:
+            batch_X, batch_y = batch_X.to(device=self.device), batch_y.to(device=self.device)
+
             optimizer.zero_grad()
             prediction = self.forward(batch_X)
             loss = criterion(prediction, batch_y)
@@ -116,6 +121,9 @@ class XrayAgent(tc.nn.Module):
 
     def predict(self, X_test):
         self.eval()
+        if not tc.is_tensor(X_test):
+            X_test = tc.tensor(X_test, dtype=tc.float32)
+        X_test = X_test.to(self.device)
         with tc.no_grad():
             predictions = self.forward(X_test)
         binary_predictions = (predictions > 0.5).float()
@@ -125,8 +133,27 @@ class XrayAgent(tc.nn.Module):
     def evaluate(self, X_test, y_test) -> dict:
         predictions = self.predict(X_test)
         if tc.is_tensor(y_test):
-            y_test = y_test.numpy()
+            y_test = y_test.cpu().numpy()
         return self._score(y_test, predictions)
+
+    def save_model(self):
+        try:
+            tc.save(self.state_dict(), self.path)
+            logging.info(f"Saved model to {self.path}")
+        except Exception as e:
+            logging.error(f"We cannot save the model (xray_agent) {e}")
+
+    def load_model(self):
+        try:
+            state_dict=tc.load(self.path, map_location=self.device, weights_only=True)
+            self.load_state_dict(state_dict)
+            logging.info(f"Loaded model from {self.path}")
+            self.eval()
+            return True
+        except Exception as e:
+            logging.error(f"We cannot load the model (xray_agent) {e}")
+            return False
+
 
     def run(self, X_train, X_test, y_train, y_test):
         try:
