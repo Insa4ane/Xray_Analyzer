@@ -3,6 +3,7 @@ from config.config import INPUT_CHANNELS, CHANNEL_SIZES, IMG_SIZE, EPOCHS, BATCH
 from torch.utils.data import TensorDataset, DataLoader
 import logging
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
+import os
 
 class XrayAgent(tc.nn.Module):
     def __init__(self):
@@ -25,6 +26,7 @@ class XrayAgent(tc.nn.Module):
         for out_c in self.channel_sizes:
             layers.append(tc.nn.Conv2d(in_channels=current_in_c, out_channels=out_c, kernel_size=3, stride=2, padding=1))
             layers.append(tc.nn.ReLU())
+            layers.append(tc.nn.Dropout2d(p=0.3))
             current_in_c = out_c
         return tc.nn.Sequential(*layers)
 
@@ -34,7 +36,7 @@ class XrayAgent(tc.nn.Module):
         return tc.nn.Sequential(
             tc.nn.Flatten(),
             tc.nn.Linear(in_features=flattened_size, out_features=1),
-            tc.nn.Sigmoid()
+            #tc.nn.Sigmoid()
         )
 
     def _calculate_flattened_size(self):
@@ -49,9 +51,11 @@ class XrayAgent(tc.nn.Module):
         x = self.classifier(x)
         return x
 
-    def fit(self, X_train, y_train, lr: float = 1e-3, min_delta=1e-3, patience=5) -> dict:
+    def fit(self, X_train, y_train, counts, lr: float = 1e-3, min_delta=1e-3, patience=5) -> dict:
         self.train()
-        criterion = tc.nn.BCELoss()
+        pos_weight_value=counts['PNEUMONIA'] / counts['NORMAL']
+        pos_weight = tc.tensor([pos_weight_value], dtype=tc.float32).to(self.device)
+        criterion = tc.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         optimizer = tc.optim.Adam(self.parameters(), lr=lr)
         dataset=TensorDataset(X_train, y_train)
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
@@ -91,7 +95,7 @@ class XrayAgent(tc.nn.Module):
 
         for batch_X, batch_y in dataloader:
             batch_X, batch_y = batch_X.to(device=self.device), batch_y.to(device=self.device)
-
+            batch_y = batch_y.view(-1, 1)
             optimizer.zero_grad()
             prediction = self.forward(batch_X)
             loss = criterion(prediction, batch_y)
@@ -99,8 +103,8 @@ class XrayAgent(tc.nn.Module):
             optimizer.step()
 
             epoch_loss += loss.item() * batch_X.size(0)
-
-            binary_preds = (prediction > 0.5).float()
+            probabilities = tc.sigmoid(prediction)
+            binary_preds = (probabilities > 0.5).float()
             all_preds.extend(binary_preds.detach().cpu().numpy())
             all_targets.extend(batch_y.detach().cpu().numpy())
 
@@ -126,7 +130,8 @@ class XrayAgent(tc.nn.Module):
         X_test = X_test.to(self.device)
         with tc.no_grad():
             predictions = self.forward(X_test)
-        binary_predictions = (predictions > 0.5).float()
+            probabilities = tc.sigmoid(predictions)
+        binary_predictions = (probabilities > 0.5).float()
 
         return binary_predictions.cpu().numpy()
 
@@ -138,6 +143,9 @@ class XrayAgent(tc.nn.Module):
 
     def save_model(self):
         try:
+            directory=os.path.dirname(self.path)
+            if not os.path.exists(directory):
+                os.makedirs(directory)
             tc.save(self.state_dict(), self.path)
             logging.info(f"Saved model to {self.path}")
         except Exception as e:
@@ -151,14 +159,15 @@ class XrayAgent(tc.nn.Module):
             self.eval()
             return True
         except Exception as e:
-            logging.error(f"We cannot load the model (xray_agent) {e}")
+            logging.warning(f"We cannot load the model (xray_agent) {e}")
             return False
 
 
-    def run(self, X_train, X_test, y_train, y_test):
+    def run(self, X_train, X_test, y_train, y_test, counts):
         try:
-            history=self.fit(X_train, y_train, lr=1e-3, min_delta=1e-3, patience=5)
+            history=self.fit(X_train, y_train, counts, lr=1e-3, min_delta=1e-3, patience=5)
             results=self.evaluate(X_test, y_test)
+            logging.info(f"Results: {results}")
             return history, results
         except Exception as e:
             logging.error(f"We have a problem with our neural network (method run in XrayAgent) {e}")

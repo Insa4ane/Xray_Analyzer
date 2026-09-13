@@ -1,4 +1,5 @@
 import logging
+import os
 
 import joblib
 import xgboost as xgb
@@ -70,6 +71,10 @@ class XGBoostAgent:
         }
     def save_model(self):
         try:
+            directory=os.path.dirname(self.path)
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+
             joblib.dump(self.classifier, self.path)
             logging.info(f"Saved XGBoost model")
         except Exception as e:
@@ -78,8 +83,10 @@ class XGBoostAgent:
     def load_model(self):
         try:
             self.classifier = joblib.load(self.path)
+            return True
         except Exception as e:
-            logging.error(f"Something's gone wrong with load model XGB. {e}")
+            logging.warning(f"Something's gone wrong with load model XGB. {e}")
+            return False
 
     def run(self, X_train, X_test, y_train, y_test):
         try:

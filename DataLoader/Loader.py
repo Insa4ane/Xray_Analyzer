@@ -43,8 +43,8 @@ class DataLoader:
         return dataset
 
     def split_data(self):
-        train_dir = os.path.join(self.path, 'train')
-        test_dir = os.path.join(self.path, 'test')
+        train_dir = os.path.join(self.path,'chest_xray', 'train')
+        test_dir = os.path.join(self.path,'chest_xray', 'test')
         train = self.build_dataset(train_dir)
         test = self.build_dataset(test_dir)
 
@@ -83,6 +83,13 @@ class DataLoader:
             logging.error(f"Error! We cannot  {e}")
             return None, None
 
+    def count_training_images_per_class(self) -> dict:
+        train_dir = os.path.join(self.path, 'chest_xray', 'train')
+        counted_photos = {}
+        for category in CATEGORIES:
+            folder_path = os.path.join(train_dir, category)
+            counted_photos[category] = len(os.listdir(folder_path))
+        return counted_photos
 
 
 
