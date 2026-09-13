@@ -101,8 +101,8 @@ class XrayAgent(tc.nn.Module):
             epoch_loss += loss.item() * batch_X.size(0)
 
             binary_preds = (prediction > 0.5).float()
-            all_preds.extend(binary_preds.cpu().numpy())
-            all_targets.extend(batch_y.cpu().numpy())
+            all_preds.extend(binary_preds.detach().cpu().numpy())
+            all_targets.extend(batch_y.detach().cpu().numpy())
 
         return epoch_loss, all_targets, all_preds
 

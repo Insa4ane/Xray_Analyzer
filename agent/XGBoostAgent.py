@@ -26,7 +26,7 @@ class XGBoostAgent:
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
         all_features = []
         with tc.no_grad():
-            for batch_X, batch_Y in dataloader:
+            for batch_X, in dataloader:
                 features = self.agent.feature_extractor(batch_X)
                 features_flattened = features.view(features.size(0), -1)
                 all_features.append(features_flattened.cpu().numpy())
@@ -90,4 +90,6 @@ class XGBoostAgent:
         except Exception as e:
             logging.error(f"Something's gone wrong with train xgb. {e}")
             return None
+
+
 
