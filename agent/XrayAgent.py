@@ -110,7 +110,8 @@ class XrayAgent(tc.nn.Module):
 
         return epoch_loss, all_targets, all_preds
 
-    def _score(self, targets, preds) -> dict:
+    @staticmethod
+    def _score(targets, preds) -> dict:
         return {
             'accuracy': accuracy_score(targets, preds) * 100,
             'precision': precision_score(targets, preds, zero_division=0),

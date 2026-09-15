@@ -22,7 +22,7 @@ class Frontend:
                 with st.spinner('Trwa analiza zdjęcia...'):
                     try:
                         files = {"uploaded_file": uploaded_file.getvalue()}
-                        response = rq.post("http://localhost:5000/predict", files=files, timeout=30)
+                        response = rq.post("http://localhost:5000/make_predict", files=files, timeout=30)
                         response.raise_for_status()
                     except rq.exceptions.RequestException as e:
                         st.error(f"Error! we cannot send an image: {e}")

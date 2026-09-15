@@ -10,19 +10,17 @@ logging.basicConfig( #for console log
 
 def main():
     dataset = DataLoader()
-    X_train, X_test, y_train, y_test=dataset.split_data()
-    counts=dataset.count_training_images_per_class() #its to balanced neural network
-    cnn_agent=XrayAgent()
-    is_existed=cnn_agent.load_model()
-    if not is_existed:
-        cnn_agent.run(X_train, X_test, y_train, y_test, counts)
-        cnn_agent.save_model()
+    X_train, X_test, y_train, y_test = dataset.split_data()
+    counts = dataset.count_training_images_per_class()  # do zbalansowania sieci
 
-    xgb_agent=XGBoostAgent(cnn_agent)
-    is_existed=xgb_agent.load_model()
-    if not is_existed:
-        xgb_agent.run(X_train, X_test, y_train, y_test)
-        xgb_agent.save_model()
+    cnn_agent = XrayAgent()
+    cnn_agent.run(X_train, X_test, y_train, y_test, counts)
+    cnn_agent.save_model()
+    xgb_agent = XGBoostAgent(cnn_agent)
+    xgb_agent.run(X_train, X_test, y_train, y_test)
+    xgb_agent.save_model()
+
+    logging.info("Training completed")
 
 
 if __name__ == "__main__":

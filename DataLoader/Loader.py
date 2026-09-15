@@ -13,7 +13,8 @@ class DataLoader:
         self.path=self.dataset_download()
         self.size=IMG_SIZE
 
-    def dataset_download(self):
+    @staticmethod
+    def dataset_download():
         return kagglehub.dataset_download(PATH)
 
     def process_image(self, image_path:str):
