@@ -13,8 +13,6 @@ class PredictionResponse(BaseModel):
     is_healthy: bool
     confidence: float
 
-
-
 class Server:
     def __init__(self):
         self.agent, self.classifier = self._get_agents()

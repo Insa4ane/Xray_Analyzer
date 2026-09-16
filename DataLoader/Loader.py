@@ -43,7 +43,7 @@ class DataLoader:
         random.shuffle(dataset)
         return dataset
 
-    def split_data(self):
+    def split_data(self): #main function
         train_dir = os.path.join(self.path,'chest_xray', 'train')
         test_dir = os.path.join(self.path,'chest_xray', 'test')
         train = self.build_dataset(train_dir)
