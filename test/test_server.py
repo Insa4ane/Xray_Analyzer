@@ -68,7 +68,12 @@ def test_get_directories_success(dummy_server):
             assert  os.path.exists(result)
 
 def test_get_directories_exception(dummy_server):
-    pass
+    height, width = 224, 224
+    images_bytes=[os.urandom(width*height*1)]
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        results=dummy_server._get_directories(images_bytes, tmp_dir)
+        assert results ==[]
+
 
 @patch.object(XGBoostAgent, 'predict', return_value=True)
 @patch.object(DataLoader, 'process_image')
@@ -89,10 +94,14 @@ def test_predict_success(mock_directory,mock_proccess,mock_predict, dummy_server
     assert result is not None
     assert isinstance(result, list) and all(isinstance(item, PredictionResponse) for item in result)
 
-def test_predict_exception(dummy_server):
-    pass
-
-
+@patch.object(XGBoostAgent, 'predict', side_effect=Exception("Błąd predykcji"))
+@patch.object(DataLoader, 'process_image')
+@patch.object(Server, '_get_directories')
+def test_predict_exception(mock_directories, mock_process, mock_predict, dummy_server):
+    mock_directories.return_value = [f"tmp/fake/{i}" for i in range(3)]
+    mock_process.return_value = tc.rand(1, 224, 224)
+    result = dummy_server.predict([b"fake_bytes"])
+    assert result is None
 
 
 
