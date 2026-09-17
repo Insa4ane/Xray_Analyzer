@@ -112,7 +112,8 @@ def test_prepare_for_training_success(loader_instance):
 
 def test_prepare_for_training_exception(loader_instance):
     faulty_dataset = [["to_nie_jest_tablica_zdjecia", 1]]
-    result = loader_instance.prepare_for_training(faulty_dataset)
+    result, fake = loader_instance.prepare_for_training(faulty_dataset)
     assert result is None
+    assert fake is None
 
 

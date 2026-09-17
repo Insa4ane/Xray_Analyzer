@@ -19,7 +19,7 @@ class Frontend:
                 return None
             for uploaded_file in uploaded_files:
                 image=Image.open(uploaded_file)
-                st.image(image, use_container_width=True)
+                st.image(image, width='stretch')
 
             button=st.button("Upload images")
             if button:

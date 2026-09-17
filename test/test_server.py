@@ -18,6 +18,17 @@ def dummy_server():
     server.classifier=XGBoostAgent(server.agent)
     return server
 
+@pytest.fixture
+def fake_image_bytes(count=10, width=224, height=224):
+    image_bytes=[]
+    for fake_bytes in range(count):
+        fake_bytes = os.urandom(width * height * 1)
+        image = Image.frombytes("L", (width, height), fake_bytes)
+        buffer=io.BytesIO()
+        image.save(buffer, format="JPEG")
+        image_bytes.append(buffer.getvalue())
+    return image_bytes
+
 @patch.object(XGBoostAgent, 'load_model', return_value=True)
 @patch.object(XrayAgent, 'load_model', return_value=True)
 def test_get_agents_success(mock_xray, mock_xgb):
@@ -52,16 +63,9 @@ def test_get_agents_exception(mock_init):
     assert classifier is None
 
 
-def test_get_directories_success(dummy_server):
-    width, height = 224, 224
-    fake_images_bytes=[]
+def test_get_directories_success(dummy_server, fake_image_bytes):
+    fake_images_bytes=fake_image_bytes
     with tempfile.TemporaryDirectory() as tmp_dir:
-        for fake_bytes in range(10):
-            fake_bytes=os.urandom(width*height*1)
-            image = Image.frombytes("L", (width, height), fake_bytes)
-            buffer = io.BytesIO()
-            image.save(buffer, format="JPEG")
-            fake_images_bytes.append(buffer.getvalue())
         results=dummy_server._get_directories(fake_images_bytes, tmp_dir)
         assert len(results)==len(fake_images_bytes)
         for result in results:
@@ -78,18 +82,11 @@ def test_get_directories_exception(dummy_server):
 @patch.object(XGBoostAgent, 'predict', return_value=True)
 @patch.object(DataLoader, 'process_image')
 @patch.object(Server, '_get_directories')
-def test_predict_success(mock_directory,mock_proccess,mock_predict, dummy_server):
+def test_predict_success(mock_directory,mock_proccess,mock_predict, dummy_server, fake_image_bytes):
     mock_directory.return_value=[f"tmp/hehe/{i}" for i in range(10)]
     mock_proccess.return_value=tc.rand(10,1, 224, 224)
     mock_predict.return_value=np.array([1,0,1,0,1,0,1,0,1,1])
-    width, height = 224, 224
-    fake_images_bytes=[]
-    for fake_bytes in range(10):
-        fake_bytes = os.urandom(width * height * 1)
-        image = Image.frombytes("L", (width, height), fake_bytes)
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG")
-        fake_images_bytes.append(buffer.getvalue())
+    fake_images_bytes=fake_image_bytes
     result = dummy_server.predict(fake_images_bytes)
     assert result is not None
     assert isinstance(result, list) and all(isinstance(item, PredictionResponse) for item in result)

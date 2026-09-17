@@ -1,13 +1,14 @@
 import logging
 import os
-
+import datetime
 import joblib
 import xgboost as xgb
 import torch as tc
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
-from config.config import BATCH_SIZE, PATH_XGB
+from config.config import BATCH_SIZE, PATH_XGB, PATH_HISTORY
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
+import json
 
 
 class XGBoostAgent:
@@ -21,6 +22,7 @@ class XGBoostAgent:
         )
         self.batch_size=BATCH_SIZE
         self.path=PATH_XGB
+        self.path_history=PATH_HISTORY
     def extract_features(self, X) -> np.ndarray:  #for xgboost
         self.agent.eval()
         dataset = TensorDataset(X)
@@ -86,6 +88,20 @@ class XGBoostAgent:
             return True
         except Exception as e:
             logging.warning(f"Something's gone wrong with load model XGB. {e}")
+            return False
+
+    def save_results(self, results):
+        try:
+            if not os.path.exists(self.path_history):
+                os.makedirs(self.path_history)
+            time_stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            path_xgb=os.path.join(self.path_history, f"results_xgb_{time_stamp}.json")
+            with open(path_xgb, 'w') as f:
+                json.dump(results, f, indent=4)
+                logging.info(f"Saved XGBoost results")
+                return True
+        except Exception as e:
+            logging.error(f"Something's gone wrong with save results. {e} in {self.path_history}")
             return False
 
     def run(self, X_train, X_test, y_train, y_test):

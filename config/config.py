@@ -11,3 +11,4 @@ EPOCHS = 10
 BATCH_SIZE = 32
 PATH_MODEL="Model_CNN/xray_cnn_model.pth"
 PATH_XGB="Model_XGB/xgb_model.joblib"
+PATH_HISTORY="History/"

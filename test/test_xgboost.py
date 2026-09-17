@@ -1,6 +1,7 @@
 from unittest.mock import patch, MagicMock
 import torch as tc
 import pytest
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from torch.utils.data import TensorDataset, DataLoader
 from agent.XGBoostAgent import XGBoostAgent
 import xgboost as xgb
@@ -13,6 +14,7 @@ def xgb_agent():
     xgb_agent.agent=XrayAgent()
     xgb_agent.classifier=xgb.XGBClassifier()
     xgb_agent.batch_size=32
+    xgb_agent.path_history = "fake/tmp/bubka"
     return xgb_agent
 
 def test_xgboost_initialization():
@@ -103,23 +105,19 @@ def test_evaluate(mock_extract_features, xgb_agent):
     assert result['recall'] == 1.0
     assert result['f1'] == 1.0
 
-
-
 @patch('joblib.dump')
-def test_save_model_success(mock_joblib_dump, xgb_agent):
-    xgb_agent.path = "fake_xgb_model.joblib"
+@patch("agent.XGBoostAgent.os.makedirs")
+def test_save_model_success(mock_mkdir, mock_joblib_dump, xgb_agent):
+    xgb_agent.path = "bubka/fake_xgb_model.joblib"
     xgb_agent.save_model()
-    mock_joblib_dump.assert_called_once_with(xgb_agent.classifier, "fake_xgb_model.joblib")
-
+    mock_joblib_dump.assert_called_once_with(xgb_agent.classifier, "bubka/fake_xgb_model.joblib")
 
 @patch('joblib.load')
 def test_load_model_success(mock_joblib_load, xgb_agent):
-    xgb_agent.path = "fake_xgb_model.joblib"
+    xgb_agent.path = "bubka/fake_xgb_model.joblib"
     mock_joblib_load.return_value = "FakeLoadedModel"
-
     xgb_agent.load_model()
-
-    mock_joblib_load.assert_called_once_with("fake_xgb_model.joblib")
+    mock_joblib_load.assert_called_once_with("bubka/fake_xgb_model.joblib")
     assert xgb_agent.classifier == "FakeLoadedModel"
 
 
@@ -128,9 +126,7 @@ def test_load_model_success(mock_joblib_load, xgb_agent):
 @patch.object(XGBoostAgent, 'evaluate')
 def test_run_success(mock_evaluate, mock_train, xgb_agent):
     mock_evaluate.return_value = {'accuracy': 95.0, 'f1': 0.9}
-
     result = xgb_agent.run("X_train", "X_test", "y_train", "y_test")
-
     mock_train.assert_called_once_with("X_train", "y_train")
     mock_evaluate.assert_called_once_with("X_test", "y_test")
     assert result['accuracy'] == 95.0
@@ -140,9 +136,32 @@ def test_run_success(mock_evaluate, mock_train, xgb_agent):
 @patch('logging.error')
 def test_run_exception(mock_log, mock_train, xgb_agent):
     mock_train.side_effect = Exception("Błąd pamięci")
-
     result = xgb_agent.run("X_train", "X_test", "y_train", "y_test")
-
     assert result is None
     mock_log.assert_called_once()
     assert "Something's gone wrong with train xgb" in mock_log.call_args[0][0]
+
+@patch("agent.XGBoostAgent.json.dump")
+@patch("builtins.open")
+@patch("agent.XGBoostAgent.os.makedirs")
+def test_save_results_success(mock_makedirs, mock_open, mock_json_dump, xgb_agent):
+
+    fake_results = {'accuracy': 85, 'precision': 85, 'recall': 30, 'f1': 30}
+    success = xgb_agent.save_results(fake_results)
+    assert success is True
+    mock_json_dump.assert_called_once()
+    args, kwargs = mock_json_dump.call_args
+    assert args[0] == fake_results
+
+@patch("agent.XGBoostAgent.os.makedirs")
+@patch("agent.XGBoostAgent.json.dump")
+@patch("builtins.open")
+def test_save_results_exception(mock_open, mock_json_dump,mock_mkdir, xgb_agent):
+
+    mock_json_dump.side_effect = Exception("Awaria sieci!")
+    fake_results = {'accuracy': 85, 'precision': 85, 'recall': 30, 'f1': 30}
+    success = xgb_agent.save_results(fake_results)
+    assert success is False
+
+
+

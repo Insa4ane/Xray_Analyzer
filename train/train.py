@@ -19,16 +19,17 @@ def main():
             if history and result_agent:
                 logging.info(f"result agent: {result_agent}")
                 agent.save_model()
-                classifier = XGBoostAgent(agent)
-                result_xgb=classifier.run(X_train, X_test, y_train, y_test)
-                if result_xgb:
-                    logging.info(f"Results XGB: {result_xgb}")
-                    classifier.save_model()
-                    return True
+                if agent.save_history_and_results(history, result_agent):
+                    classifier = XGBoostAgent(agent)
+                    result_xgb=classifier.run(X_train, X_test, y_train, y_test)
+                    if result_xgb:
+                        logging.info(f"Results XGB: {result_xgb}")
+                        classifier.save_model()
+                        if classifier.save_results(result_xgb):
+                            return True
     except Exception as e:
         logging.error(f"Something's gone wrong with train xgb. {e}")
         return False
-
 
 
 if __name__=="__main__":

@@ -1,5 +1,7 @@
+import datetime
+import json
 import torch as tc
-from config.config import INPUT_CHANNELS, CHANNEL_SIZES, IMG_SIZE, EPOCHS, BATCH_SIZE, PATH_MODEL
+from config.config import INPUT_CHANNELS, CHANNEL_SIZES, IMG_SIZE, EPOCHS, BATCH_SIZE, PATH_MODEL, PATH_HISTORY
 from torch.utils.data import TensorDataset, DataLoader
 import logging
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
@@ -18,6 +20,7 @@ class XrayAgent(tc.nn.Module):
         self.batch_size=BATCH_SIZE
         self.path=PATH_MODEL
         self.to(self.device)
+        self.path_history=PATH_HISTORY
 
     def _build_feature_extractor(self):
         layers = []
@@ -113,10 +116,10 @@ class XrayAgent(tc.nn.Module):
     @staticmethod
     def _score(targets, preds) -> dict:
         return {
-            'accuracy': accuracy_score(targets, preds) * 100,
-            'precision': precision_score(targets, preds, zero_division=0),
-            'recall': recall_score(targets, preds, zero_division=0),
-            'f1': f1_score(targets, preds, zero_division=0)
+            'accuracy': float(accuracy_score(targets, preds) * 100),
+            'precision': float(precision_score(targets, preds, zero_division=0)),
+            'recall': float(recall_score(targets, preds, zero_division=0)),
+            'f1': float(f1_score(targets, preds, zero_division=0))
         }
 
     def _calculate_metrics(self, epoch_loss, total_samples, targets, preds) -> dict:
@@ -161,6 +164,24 @@ class XrayAgent(tc.nn.Module):
             return True
         except Exception as e:
             logging.warning(f"We cannot load the model (xray_agent) {e}")
+            return False
+
+    def save_history_and_results(self, history, results):
+        try:
+            if not os.path.exists(self.path_history):
+                os.makedirs(self.path_history)
+            timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            path_history = os.path.join(self.path_history, f"history_{timestamp}.json")
+            path_results = os.path.join(self.path_history, f"results_agent{timestamp}.json")
+            with open(path_history, "w") as f:
+                json.dump(history, f, indent=4)
+            logging.info(f"Saved history to {path_history}")
+            with open(path_results, "w") as f:
+                json.dump(results, f, indent=4)
+            logging.info(f"Saved results to {path_results}")
+            return True
+        except Exception as e:
+            logging.error(f"We cannot save the history ({e}) to {self.path_history}")
             return False
 
 
