@@ -2,6 +2,7 @@ import logging
 from DataLoader.Loader import DataLoader
 from agent.XrayAgent import XrayAgent
 from agent.XGBoostAgent import XGBoostAgent
+from utils.plotting import Plotting
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,7 +20,10 @@ def main():
             if history and result_agent:
                 logging.info(f"result agent: {result_agent}")
                 agent.save_model()
-                if agent.save_history_and_results(history, result_agent):
+                plot = Plotting()
+                is_existed=agent.save_history_and_results(history, result_agent)
+                path_plot=plot.plot_history(history, is_existed)
+                if path_plot:
                     classifier = XGBoostAgent(agent)
                     result_xgb=classifier.run(X_train, X_test, y_train, y_test)
                     if result_xgb:
