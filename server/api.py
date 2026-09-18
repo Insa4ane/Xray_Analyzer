@@ -10,9 +10,3 @@ async def make_predict(files:list[fastapi.UploadFile]):
         raise fastapi.HTTPException(status_code=503, detail="Model is not available")
     files_bytes=[await file.read() for file in files]
     return server.predict(files_bytes)
-
-
-
-
-
-

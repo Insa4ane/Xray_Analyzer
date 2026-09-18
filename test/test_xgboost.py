@@ -59,30 +59,40 @@ def test_train(mock_extract_features, xgb_agent):
     np.testing.assert_array_equal(args[0], fake_extracted_matrix)
     np.testing.assert_array_equal(args[1], fake_y_train)
 
-
 @patch.object(XGBoostAgent, 'extract_features')
 def test_predict_success(mock_extract_features, xgb_agent):
     fake_X_test = tc.rand(2, 1, 64, 64)
     fake_features = np.array([[0.1, 0.5], [0.8, 0.2]])
-    fake_predictions = np.array([0, 1])
 
+    fake_probabilities = np.array([
+        [0.1, 0.9],
+        [0.7, 0.3],
+    ])
     mock_extract_features.return_value = fake_features
-    xgb_agent.classifier.predict = MagicMock(return_value=fake_predictions)
+    xgb_agent.classifier.predict_proba = MagicMock(return_value=fake_probabilities)
 
-    result = xgb_agent.predict(fake_X_test)
+    predictions, confidences = xgb_agent.predict(fake_X_test)
 
     mock_extract_features.assert_called_once_with(fake_X_test)
-    xgb_agent.classifier.predict.assert_called_once()
-    np.testing.assert_array_equal(result, fake_predictions)
+    xgb_agent.classifier.predict_proba.assert_called_once()
+
+    expected_predictions = np.array([1, 0])
+    expected_confidences = np.array([0.9, 0.7])
+
+    np.testing.assert_array_equal(predictions, expected_predictions)
+    np.testing.assert_array_almost_equal(confidences, expected_confidences)
 
 
 @patch.object(XGBoostAgent, 'extract_features')
 @patch('logging.error')
 def test_predict_exception(mock_log, mock_extract_features, xgb_agent):
     mock_extract_features.side_effect = Exception("Awaria sieci!")
-
-    result = xgb_agent.predict(tc.rand(2, 1, 64, 64))
-
+    fake_probabilities = np.array([
+        [0.1, 0.9],
+        [0.7, 0.3],
+    ])
+    xgb_agent.classifier.predict_proba = MagicMock(return_value=fake_probabilities)
+    result, proba = xgb_agent.predict(tc.rand(2, 1, 64, 64))
     assert result is None
     mock_log.assert_called_once()
     assert "Something's gone wrong with predict" in mock_log.call_args[0][0]

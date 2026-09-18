@@ -20,8 +20,7 @@ def main():
                     else:
                         st.error("Chore pluca (pneumonia)")
                     if result['confidence']:
-                         st.metric("Pewnosc", f"{result['confidence']}%")
-
+                         st.metric("Pewnosc", f"{result['confidence']*100}%")
 
 if __name__ == "__main__":
     main()

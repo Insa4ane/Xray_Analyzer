@@ -4,6 +4,7 @@ import datetime
 import joblib
 import xgboost as xgb
 import torch as tc
+from sympy.stats.rv import probability
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 from config.config import BATCH_SIZE, PATH_XGB, PATH_HISTORY
@@ -51,12 +52,14 @@ class XGBoostAgent:
     def predict(self, X_test):
         try:
             X_test_features = self.extract_features(X_test)
-            predictions=self.classifier.predict(X_test_features)
+            probabilities=self.classifier.predict_proba(X_test_features)
+            predictions = probabilities.argmax(axis=1)
+            confidences = probabilities.max(axis=1)
             logging.info(f"Predicted XGBoost model")
-            return predictions
+            return predictions, confidences
         except Exception as e:
             logging.error(f"Something's gone wrong with predict. {e}")
-            return None
+            return None, None
 
     def evaluate(self, X_test, y_test):
         X_test_features = self.extract_features(X_test)

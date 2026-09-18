@@ -85,7 +85,9 @@ def test_get_directories_exception(dummy_server):
 def test_predict_success(mock_directory,mock_proccess,mock_predict, dummy_server, fake_image_bytes):
     mock_directory.return_value=[f"tmp/hehe/{i}" for i in range(10)]
     mock_proccess.return_value=tc.rand(10,1, 224, 224)
-    mock_predict.return_value=np.array([1,0,1,0,1,0,1,0,1,1])
+    fake_predictions = np.array([1, 0, 1, 0, 1, 0, 1, 0, 1, 1])
+    fake_confidences = np.array([0.7, 0.8, 0.7, 0.8, 0.7, 0.8, 0.7, 0.8, 0.7, 0.8])
+    mock_predict.return_value = (fake_predictions, fake_confidences)
     fake_images_bytes=fake_image_bytes
     result = dummy_server.predict(fake_images_bytes)
     assert result is not None

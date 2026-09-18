@@ -3,6 +3,8 @@ import tempfile
 import os
 from pydantic import BaseModel
 import numpy as np
+from sympy.stats.rv import probability
+
 from DataLoader.Loader import DataLoader
 from agent.XGBoostAgent import XGBoostAgent
 from agent.XrayAgent import XrayAgent
@@ -48,8 +50,8 @@ class Server:
                             dataset.append(image_tmp)
                     X = np.array(dataset).reshape(-1, 1, self.agent.size, self.agent.size)/255.0
                     X=tc.tensor(X, dtype=tc.float32)
-                    predictions=self.classifier.predict(X)
-                    return [PredictionResponse(is_healthy=bool(p == 1), confidence=85.0) for p in predictions]
+                    predictions, proba=self.classifier.predict(X)
+                    return [PredictionResponse(is_healthy=bool(pred == 1), confidence=float(conf)) for pred, conf in zip(predictions, proba)]
                 else:
                     return []
         except Exception as e:
