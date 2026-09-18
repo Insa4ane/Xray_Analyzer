@@ -1,0 +1,42 @@
+services:
+  train:
+    build: .
+    command: sh -c "if [ -f /app/Model_CNN/xray_cnn_model.pth ] && [ -f /app/Model_XGB/xgb_model.joblib ]; then echo 'Models already exist, skipping training'; else python -m train.train; fi"
+    volumes:
+      - models_cnn:/app/Model_CNN
+      - models_xgb:/app/Model_XGB
+      - history:/app/History
+      - kaggle_cache:/root/.cache/kagglehub
+    env_file:
+      - .env
+
+  api:
+    build: .
+    command: uvicorn server.api:app --host 0.0.0.0 --port 5000
+    depends_on:
+      train:
+        condition: service_completed_successfully
+    volumes:
+      - models_cnn:/app/Model_CNN
+      - models_xgb:/app/Model_XGB
+      - kaggle_cache:/root/.cache/kagglehub
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+
+  frontend:
+    build: .
+    command: streamlit run frontend/main_front.py --server.address=0.0.0.0
+    depends_on:
+      - api
+    environment:
+      - BACKEND_URL=http://api:5000/
+    ports:
+      - "8501:8501"
+
+volumes:
+  models_cnn:
+  models_xgb:
+  history:
+  kaggle_cache:

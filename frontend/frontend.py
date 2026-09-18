@@ -1,10 +1,11 @@
 import streamlit as st
 from PIL import Image
 import requests as rq
+from config.config import BACKEND_URL
 
 class Frontend:
     def __init__(self):
-        self.url="http://localhost:5000/"
+        self.url=BACKEND_URL
 
     @staticmethod
     def main_menu():

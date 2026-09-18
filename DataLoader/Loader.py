@@ -9,8 +9,8 @@ import logging
 
 class DataLoader:
 
-    def __init__(self):
-        self.path=self.dataset_download()
+    def __init__(self, is_required_to_download:bool = True):
+        self.path=self.dataset_download() if is_required_to_download else None
         self.size=IMG_SIZE
 
     @staticmethod

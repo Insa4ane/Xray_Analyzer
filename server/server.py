@@ -43,7 +43,7 @@ class Server:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 directories = self._get_directories(uploaded_files, tmp_dir)
                 if directories:
-                    loader=DataLoader()
+                    loader=DataLoader(is_required_to_download=False)
                     for directory in directories:
                         image_tmp=loader.process_image(directory)
                         if image_tmp is not None:
