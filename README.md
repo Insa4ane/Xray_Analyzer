@@ -1,6 +1,6 @@
 # 🫁 X-Ray Analyzer
 
-An application for automatically analyzing chest X-ray images for signs of **pneumonia**, using a convolutional neural network (CNN) as a feature extractor combined with an **XGBoost** classifier for the final prediction. The project exposes a REST API (FastAPI) and a simple web interface (Streamlit) for uploading images and viewing the results.
+An application for automatically analyzing chest X-ray images for signs of **pneumonia**, using a convolutional neural network (CNN) as a feature extractor combined with an **XGBoost** classifier for the final prediction. The project exposes a REST API (FastAPI) and a simple web interface (Streamlit) for uploading images and viewing the results. Educational project, not a diagnostic tool
 
 ## Table of contents
 
