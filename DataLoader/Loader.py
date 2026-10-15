@@ -6,7 +6,7 @@ import kagglehub
 import cv2
 import random
 import logging
-
+from sklearn.model_selection import train_test_split
 class DataLoader:
 
     def __init__(self, is_required_to_download:bool = True):
@@ -62,7 +62,13 @@ class DataLoader:
 
         X_test, y_test = result_test
         X_train, y_train = result_train
-        return X_train, X_test, y_train, y_test
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_train, y_train,
+            test_size=0.15,
+            stratify=y_train,
+            random_state=42
+        )
+        return X_train, X_test, y_train, y_test, X_val, y_val
 
     def prepare_for_training(self, dataset:list[list]):
         X=[]

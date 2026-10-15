@@ -6,6 +6,7 @@ from torch.utils.data import TensorDataset, DataLoader
 import logging
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 import os
+import copy
 
 class XrayAgent(tc.nn.Module):
     def __init__(self):
@@ -54,42 +55,54 @@ class XrayAgent(tc.nn.Module):
         x = self.classifier(x)
         return x
 
-    def fit(self, X_train, y_train, counts, lr: float = 1e-3, min_delta=1e-3, patience=5) -> dict:
-        self.train()
-        pos_weight_value=counts['PNEUMONIA'] / counts['NORMAL']
+    def fit(self, X_train, y_train, X_val, y_val, counts, lr=1e-3, min_delta=1e-3, patience=5) -> dict:
+        pos_weight_value = counts['PNEUMONIA'] / counts['NORMAL']
         pos_weight = tc.tensor([pos_weight_value], dtype=tc.float32).to(self.device)
         criterion = tc.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         optimizer = tc.optim.Adam(self.parameters(), lr=lr)
-        dataset=TensorDataset(X_train, y_train)
-        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
-        history = {'loss': [], 'accuracy': [], 'precision': [], 'recall': [], 'f1': []}
-        best_loss=float('inf')
+        train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=self.batch_size, shuffle=True)
+        val_loader = DataLoader(TensorDataset(X_val, y_val), batch_size=self.batch_size, shuffle=False)
+
+        history = {'loss': [], 'accuracy': [], 'precision': [], 'recall': [], 'f1': [],
+                   'val_loss': [], 'val_accuracy': [], 'val_precision': [], 'val_recall': [], 'val_f1': []}
+
+        best_val_loss = float('inf')
+        best_state = None
         patience_counter = 0
+
         for epoch in range(self.epochs):
-            epoch_loss, all_targets, all_preds = self._train_one_epoch(dataloader, criterion, optimizer)
+            self.train()
+            epoch_loss, t_targets, t_preds = self._train_one_epoch(train_loader, criterion, optimizer)
+            metrics = self._calculate_metrics(epoch_loss, len(X_train), t_targets, t_preds)
 
-            metrics = self._calculate_metrics(epoch_loss, len(dataset), all_targets, all_preds)
+            val_loss_sum, v_targets, v_preds = self._validate(val_loader, criterion)
+            val_metrics = self._calculate_metrics(val_loss_sum, len(X_val), v_targets, v_preds)
 
-            for key in history.keys():
+            for key in metrics:
                 history[key].append(metrics[key])
+                history[f'val_{key}'].append(val_metrics[key])
 
-            if best_loss - metrics['loss'] > min_delta:
-                best_loss = metrics['loss']
+            if best_val_loss - val_metrics['loss'] > min_delta:
+                best_val_loss = val_metrics['loss']
+                best_state = copy.deepcopy(self.state_dict())
                 patience_counter = 0
             else:
                 patience_counter += 1
 
-            if patience_counter >=patience:
-                logging.info(f"Early stopping! {patience_counter} patience")
-                break
-
             logging.info(
-                f"Epoch [{epoch + 1}/{self.epochs}] - Loss: {metrics['loss']:.4f} | "
-                f"Acc: {metrics['accuracy']:.2f}% | P: {metrics['precision']:.2f} | "
-                f"R: {metrics['recall']:.2f} | F1: {metrics['f1']:.2f}"
+                f"Epoch [{epoch + 1}/{self.epochs}] - "
+                f"Loss: {metrics['loss']:.4f} | Val loss: {val_metrics['loss']:.4f} | "
+                f"Acc: {metrics['accuracy']:.2f}% | Val acc: {val_metrics['accuracy']:.2f}% | "
+                f"Val recall: {val_metrics['recall']:.2f}"
             )
 
+            if patience_counter >= patience:
+                logging.info(f"Early stopping at epoch {epoch + 1}")
+                break
+
+        if best_state is not None:
+            self.load_state_dict(best_state)
         return history
 
     def _train_one_epoch(self, dataloader, criterion, optimizer) -> tuple:
@@ -112,6 +125,22 @@ class XrayAgent(tc.nn.Module):
             all_targets.extend(batch_y.detach().cpu().numpy())
 
         return epoch_loss, all_targets, all_preds
+
+    def _validate(self, dataloader, criterion) -> tuple:
+        self.eval()  # wyłącza dropout
+        total_loss = 0.0
+        all_preds, all_targets = [], []
+        with tc.no_grad():  # bez gradientów
+            for batch_X, batch_y in dataloader:
+                batch_X = batch_X.to(self.device)
+                batch_y = batch_y.to(self.device).view(-1, 1)
+                logits = self.forward(batch_X)
+                loss = criterion(logits, batch_y)
+                total_loss += loss.item() * batch_X.size(0)
+                preds = (tc.sigmoid(logits) > 0.5).float()
+                all_preds.extend(preds.cpu().numpy())
+                all_targets.extend(batch_y.cpu().numpy())
+        return total_loss, all_targets, all_preds
 
     @staticmethod
     def _score(targets, preds) -> dict:
@@ -185,9 +214,9 @@ class XrayAgent(tc.nn.Module):
             return False
 
 
-    def run(self, X_train, X_test, y_train, y_test, counts):
+    def run(self, X_train, X_val, X_test, y_train, y_val, y_test, counts):
         try:
-            history=self.fit(X_train, y_train, counts, lr=1e-3, min_delta=1e-3, patience=5)
+            history = self.fit(X_train, y_train, X_val, y_val, counts, lr=1e-3, min_delta=1e-3, patience=5)
             results=self.evaluate(X_test, y_test)
             logging.info(f"Results: {results}")
             return history, results

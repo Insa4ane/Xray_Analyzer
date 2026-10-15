@@ -13,10 +13,10 @@ def main():
     try:
         loader=DataLoader()
         if loader.path:
-            X_train, X_test, y_train, y_test=loader.split_data()
+            X_train, X_test, y_train, y_test, X_val, y_val=loader.split_data()
             agent=XrayAgent()
             count=loader.count_training_images_per_class()
-            history, result_agent=agent.run(X_train, X_test, y_train, y_test, count)
+            history, result_agent = agent.run(X_train, X_val, X_test, y_train, y_val, y_test, count)
             if history and result_agent:
                 logging.info(f"result agent: {result_agent}")
                 agent.save_model()
