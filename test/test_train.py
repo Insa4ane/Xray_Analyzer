@@ -8,7 +8,6 @@ from DataLoader.Loader import DataLoader
 from train import train
 
 
-@patch.object(train, "Plotting")
 @patch.object(DataLoader, "dataset_download", return_value="C:/fake/path")
 @patch.object(XrayAgent, "save_model")
 @patch.object(XGBoostAgent, "save_model")
@@ -20,13 +19,14 @@ from train import train
 @patch.object(XGBoostAgent, "save_results", return_value=True)
 def test_train_success(mock_xgb_results, mock_history_and_results, mock_split, mock_count,
                        mock_run_agent, mock_run_xgb, mock_save_xgb, mock_save_agent,
-                       mock_download, mock_plotting):
+                       mock_download):
     fake_x_train = tc.rand(3, 1, 64, 64)
     fake_y_train = tc.tensor([1.0, 0.0, 1.0], dtype=tc.float)
     fake_x_test = tc.rand(3, 1, 64, 64)
     fake_y_test = tc.tensor([1.0, 0.0, 1.0], dtype=tc.float)
     fake_x_val = tc.rand(2, 1, 64, 64)
     fake_y_val = tc.tensor([1.0, 0.0], dtype=tc.float)
+    # kolejnosc taka jak zwraca split_data
     mock_split.return_value = (fake_x_train, fake_x_test, fake_y_train, fake_y_test, fake_x_val, fake_y_val)
 
     fake_history = {'loss': [0.5], 'val_loss': [0.4]}
@@ -35,7 +35,6 @@ def test_train_success(mock_xgb_results, mock_history_and_results, mock_split, m
     mock_run_agent.return_value = (fake_history, fake_result_agent)
     mock_run_xgb.return_value = fake_result_xgb
     mock_count.return_value = {'PNEUMONIA': 3, 'NORMAL': 1}
-    mock_plotting.return_value.plot_history.return_value = "plot.png"
 
     result = train.main()
 
@@ -57,7 +56,6 @@ def test_train_success(mock_xgb_results, mock_history_and_results, mock_split, m
     assert xgb_args[3] is fake_y_test
 
     mock_history_and_results.assert_called_once_with(fake_history, fake_result_agent)
-    mock_plotting.return_value.plot_history.assert_called_once_with(fake_history, True)
     mock_xgb_results.assert_called_once_with(fake_result_xgb)
     mock_save_agent.assert_called_once()
     mock_save_xgb.assert_called_once()
@@ -68,10 +66,9 @@ def test_train_success(mock_xgb_results, mock_history_and_results, mock_split, m
 def test_train_exception(mock_split, mock_download):
     mock_split.side_effect = Exception("Error! we cannot split data")
     result = train.main()
-    assert not result
+    assert result is False
 
 
-@patch.object(train, "Plotting")
 @patch.object(DataLoader, "dataset_download", return_value="C:/fake/path")
 @patch.object(XrayAgent, "save_model")
 @patch.object(XGBoostAgent, "save_model")
@@ -80,16 +77,41 @@ def test_train_exception(mock_split, mock_download):
 @patch.object(DataLoader, "count_training_images_per_class")
 @patch.object(DataLoader, "split_data")
 def test_train_stops_when_agent_training_fails(mock_split, mock_count, mock_run_agent, mock_run_xgb,
-                                               mock_save_xgb, mock_save_agent, mock_download, mock_plotting):
+                                               mock_save_xgb, mock_save_agent, mock_download):
     mock_split.return_value = (tc.rand(3, 1, 64, 64), tc.rand(3, 1, 64, 64),
                                tc.tensor([1.0, 0.0, 1.0]), tc.tensor([1.0, 0.0, 1.0]),
                                tc.rand(2, 1, 64, 64), tc.tensor([1.0, 0.0]))
     mock_count.return_value = {'PNEUMONIA': 3, 'NORMAL': 1}
-    mock_run_agent.return_value = (None, None)
+    mock_run_agent.return_value = (None, None)   # tak run zwraca przy bledzie treningu
 
     result = train.main()
 
-    assert not result
+    assert result is False
     mock_run_xgb.assert_not_called()
     mock_save_agent.assert_not_called()
     mock_save_xgb.assert_not_called()
+
+
+@patch.object(DataLoader, "dataset_download", return_value="C:/fake/path")
+@patch.object(XrayAgent, "save_model")
+@patch.object(XGBoostAgent, "save_model")
+@patch.object(XGBoostAgent, "run")
+@patch.object(XrayAgent, "run")
+@patch.object(DataLoader, "count_training_images_per_class")
+@patch.object(DataLoader, "split_data")
+@patch.object(XrayAgent, "save_history_and_results", return_value=False)
+@patch.object(XGBoostAgent, "save_results", return_value=True)
+def test_train_continues_when_history_not_saved(mock_xgb_results, mock_history_and_results, mock_split,
+                                                mock_count, mock_run_agent, mock_run_xgb,
+                                                mock_save_xgb, mock_save_agent, mock_download):
+    mock_split.return_value = (tc.rand(3, 1, 64, 64), tc.rand(3, 1, 64, 64),
+                               tc.tensor([1.0, 0.0, 1.0]), tc.tensor([1.0, 0.0, 1.0]),
+                               tc.rand(2, 1, 64, 64), tc.tensor([1.0, 0.0]))
+    mock_count.return_value = {'PNEUMONIA': 3, 'NORMAL': 1}
+    mock_run_agent.return_value = ({'loss': [0.5]}, {'accuracy': 90.0})
+    mock_run_xgb.return_value = {'accuracy': 91.0}
+
+    result = train.main()
+
+    assert result is True            # brak zapisu historii nie blokuje XGBoosta
+    mock_run_xgb.assert_called_once()

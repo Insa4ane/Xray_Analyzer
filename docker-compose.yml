@@ -35,6 +35,16 @@ services:
     ports:
       - "8501:8501"
 
+  tensorboard:
+    build: .
+    command: tensorboard --logdir /app/History/tb --host 0.0.0.0
+    depends_on:
+      - train
+    volumes:
+      - history:/app/History
+    ports:
+      - "6006:6006"
+
 volumes:
   models_cnn:
   models_xgb:
