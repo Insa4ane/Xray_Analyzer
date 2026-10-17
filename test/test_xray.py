@@ -1,22 +1,32 @@
 from unittest.mock import patch, MagicMock
-import torch as tc
-import pytest
-from torch.utils.data import TensorDataset, DataLoader
-from agent.XrayAgent import XrayAgent
+
 import numpy as np
+import pytest
+import torch as tc
+from torch.utils.data import TensorDataset, DataLoader
+
+from agent.XrayAgent import XrayAgent
+
+METRIC_KEYS = ['loss', 'accuracy', 'precision', 'recall', 'f1']
+
+
+@pytest.fixture(autouse=True)
+def no_tensorboard():
+    with patch("agent.XrayAgent.SummaryWriter") as mock_writer:
+        yield mock_writer
 
 
 @pytest.fixture
-def dummy_agent():
+def dummy_agent(tmp_path):
     agent = XrayAgent()
     agent.input_channels = 1
     agent.channel_sizes = [16, 32]
     agent.size = 64
     agent.epochs = 5
+    agent.path_history = str(tmp_path)
     agent.feature_extractor = agent._build_feature_extractor()
     agent.classifier = agent._build_classifier()
     return agent
-
 
 
 @patch.object(XrayAgent, '_build_classifier')
@@ -86,6 +96,7 @@ def test_forward_pass(dummy_agent):
     assert output.shape == (1, 1)
     assert 0.0 <= probabilities.item() <= 1.0
 
+
 @patch.object(XrayAgent, 'predict')
 def test_evaluate(mock_predict, dummy_agent):
     mock_predict.return_value = np.array([[1.0], [0.0], [1.0], [1.0]])
@@ -94,6 +105,7 @@ def test_evaluate(mock_predict, dummy_agent):
     results = dummy_agent.evaluate(dummy_X, y_test)
     assert isinstance(results, dict)
     assert results['accuracy'] == 75.0
+
 
 @patch.object(XrayAgent, 'forward')
 def test_predict(mock_forward, dummy_agent):
@@ -104,37 +116,52 @@ def test_predict(mock_forward, dummy_agent):
     assert isinstance(predictions, np.ndarray)
     assert np.array_equal(predictions, dummy_results)
 
+
 def test_fit(dummy_agent):
     x_train = tc.randn(4, 1, 64, 64)
     y_train = tc.tensor([[1.0], [0.0], [1.0], [0.0]])
+    x_val = tc.randn(4, 1, 64, 64)
+    y_val = tc.tensor([[1.0], [0.0], [1.0], [0.0]])
     dummy_agent.epochs = 1
     fake_counts = {'PNEUMONIA': 2, 'NORMAL': 2}
     initial_weights = dummy_agent.feature_extractor[0].weight.clone()
-    dummy_agent.fit(x_train, y_train, fake_counts)
+
+    dummy_agent.fit(x_train, y_train, x_val, y_val, fake_counts)
+
     updated_weights = dummy_agent.feature_extractor[0].weight.clone()
     assert not tc.equal(initial_weights, updated_weights)
 
+
+@patch.object(XrayAgent, '_validate')
 @patch.object(XrayAgent, '_calculate_metrics')
 @patch.object(XrayAgent, '_train_one_epoch')
-def test_fit_history_structure(mock_train_epoch, mock_calc_metrics, dummy_agent):
+def test_fit_history_structure(mock_train_epoch, mock_calc_metrics, mock_validate, dummy_agent):
     dummy_agent.epochs = 3
     mock_train_epoch.return_value = (1.0, [1, 0], [1, 0])
+    mock_validate.return_value = (1.0, [1, 0], [1, 0])
     mock_calc_metrics.return_value = {
         'loss': 0.5, 'accuracy': 90.0, 'precision': 0.8, 'recall': 0.7, 'f1': 0.75
     }
 
     x_train = tc.randn(2, 1, 64, 64)
     y_train = tc.tensor([[1.0], [0.0]])
+    x_val = tc.randn(2, 1, 64, 64)
+    y_val = tc.tensor([[1.0], [0.0]])
     fake_counts = {'PNEUMONIA': 1, 'NORMAL': 1}
-    history = dummy_agent.fit(x_train, y_train, fake_counts)
+    history = dummy_agent.fit(x_train, y_train, x_val, y_val, fake_counts)
 
-    assert set(history.keys()) == {'loss', 'accuracy', 'precision', 'recall', 'f1'}
-    for key in history:
+    expected_keys = set(METRIC_KEYS) | {f'val_{k}' for k in METRIC_KEYS}
+    assert set(history.keys()) == expected_keys
+    for key in METRIC_KEYS:
         assert len(history[key]) == 3
+        assert len(history[f'val_{key}']) == 3
         assert all(v == mock_calc_metrics.return_value[key] for v in history[key])
+        assert all(v == mock_calc_metrics.return_value[key] for v in history[f'val_{key}'])
 
     assert mock_train_epoch.call_count == 3
-    assert mock_calc_metrics.call_count == 3
+    assert mock_validate.call_count == 3
+    assert mock_calc_metrics.call_count == 6
+
 
 def test_score(dummy_agent):
     targets = [1, 0, 1, 1]
@@ -170,6 +197,7 @@ def test_calculate_metrics(dummy_agent):
     assert result['accuracy'] == 75.0
     assert result['precision'] == 1.0
 
+
 @patch.object(XrayAgent, 'forward')
 def test_train_one_epoch(mock_forward, dummy_agent):
     mock_forward.return_value = tc.tensor([[2.0], [-2.0]], requires_grad=True)
@@ -189,40 +217,46 @@ def test_train_one_epoch(mock_forward, dummy_agent):
     assert len(preds) == 2
     assert preds[0][0] == 1.0
     assert preds[1][0] == 0.0
-    assert preds[1][0] == 0.0
+
 
 @patch.object(XrayAgent, 'fit')
 @patch.object(XrayAgent, 'evaluate')
 def test_run_success(mock_evaluate, mock_fit, dummy_agent):
-    mock_evaluate.return_value={
+    mock_evaluate.return_value = {
         'loss': 0.5, 'accuracy': 90.0,
     }
-    mock_fit.return_value={
-        'test':"elo",
+    mock_fit.return_value = {
+        'test': "elo",
         'youhooo': "yep"
     }
-    history,result=dummy_agent.run(X_test=tc.randn(2, 1, 64, 64), y_test=tc.tensor([[1.0], [0.0]]), X_train=tc.randn(2, 1, 64, 64), y_train=tc.tensor([[1.0], [0.0]]), counts={'PNEUMONIA': 1, 'NORMAL': 1})
+    history, result = dummy_agent.run(
+        X_train=tc.randn(2, 1, 64, 64), X_val=tc.randn(2, 1, 64, 64), X_test=tc.randn(2, 1, 64, 64),
+        y_train=tc.tensor([[1.0], [0.0]]), y_val=tc.tensor([[1.0], [0.0]]), y_test=tc.tensor([[1.0], [0.0]]),
+        counts={'PNEUMONIA': 1, 'NORMAL': 1}
+    )
     assert history['test'] == "elo"
     assert history['youhooo'] == "yep"
-    assert result['loss']==0.5
-    assert result['accuracy']==90.0
+    assert result['loss'] == 0.5
+    assert result['accuracy'] == 90.0
+
 
 @patch("agent.XrayAgent.logging.error")
 @patch.object(XrayAgent, 'fit')
 def test_run_exception(mock_fit, mock_logging, dummy_agent):
     mock_fit.side_effect = Exception("Error of memory leak")
     history, result = dummy_agent.run(
-        X_train=tc.randn(2, 1, 64, 64), y_train=tc.tensor([[1.0], [0.0]]),
-        X_test=tc.randn(2, 1, 64, 64), y_test=tc.tensor([[1.0], [0.0]]),
+        X_train=tc.randn(2, 1, 64, 64), X_val=tc.randn(2, 1, 64, 64), X_test=tc.randn(2, 1, 64, 64),
+        y_train=tc.tensor([[1.0], [0.0]]), y_val=tc.tensor([[1.0], [0.0]]), y_test=tc.tensor([[1.0], [0.0]]),
         counts={'PNEUMONIA': 1, 'NORMAL': 1}
     )
     assert result is None
     assert history is None
     mock_logging.assert_called_once()
 
+
 @patch("agent.XrayAgent.os.makedirs")
 @patch("agent.XrayAgent.tc.save")
-def test_save_success(mock_save,mock_mkdir, dummy_agent):
+def test_save_success(mock_save, mock_mkdir, dummy_agent):
     dummy_agent.path = "fake/dir"
     dummy_agent.save_model()
     mock_save.assert_called_once()
@@ -230,10 +264,11 @@ def test_save_success(mock_save,mock_mkdir, dummy_agent):
     assert args[1] == "fake/dir"
     assert isinstance(args[0], dict)
 
+
 @patch("agent.XrayAgent.os.makedirs")
 @patch('agent.XrayAgent.tc.save')
 @patch('agent.XrayAgent.logging.error')
-def test_save_exception(mock_logging_error, mock_save,mock_mkdir, dummy_agent):
+def test_save_exception(mock_logging_error, mock_save, mock_mkdir, dummy_agent):
     mock_save.side_effect = Exception("Error of memory leak")
     dummy_agent.path = "bubka/test_model_path.pth"
     dummy_agent.save_model()
@@ -243,22 +278,24 @@ def test_save_exception(mock_logging_error, mock_save,mock_mkdir, dummy_agent):
     assert "We cannot save the model (xray_agent)" in logged_message
     assert "Error of memory leak" in logged_message
 
+
 @patch("agent.XrayAgent.os.makedirs")
 @patch("agent.XrayAgent.tc.load")
-def test_load_success(mock_load,mock_mkdir, dummy_agent):
-    dummy_agent.path="fake/dir"
-    fake_state_dict=dummy_agent.state_dict()
-    mock_load.return_value= fake_state_dict
+def test_load_success(mock_load, mock_mkdir, dummy_agent):
+    dummy_agent.path = "fake/dir"
+    fake_state_dict = dummy_agent.state_dict()
+    mock_load.return_value = fake_state_dict
     dummy_agent.load_model()
     mock_load.assert_called_once_with(
         dummy_agent.path, map_location=dummy_agent.device, weights_only=True
     )
     assert dummy_agent.training is False
 
+
 @patch("agent.XrayAgent.os.makedirs")
 @patch('agent.XrayAgent.tc.load')
 @patch('agent.XrayAgent.logging.warning')
-def test_load_exception(mock_logging_error, mock_torch_load,mock_mkdir, dummy_agent):
+def test_load_exception(mock_logging_error, mock_torch_load, mock_mkdir, dummy_agent):
     mock_torch_load.side_effect = Exception("We cannot find a file")
     dummy_agent.path = "broken_path.pth"
     dummy_agent.load_model()
@@ -271,12 +308,14 @@ def test_load_exception(mock_logging_error, mock_torch_load,mock_mkdir, dummy_ag
     assert "We cannot load the model (xray_agent)" in logged_message
     assert "We cannot find a file" in logged_message
 
+
 @patch("agent.XrayAgent.tc.load")
 @patch.object(XrayAgent, "load_state_dict", side_effect=RuntimeError("shape mismatch"))
 def test_load_state_dict_mismatch(mock_load_state_dict, mock_load, dummy_agent):
     mock_load.return_value = {"fake": "state_dict"}
     dummy_agent.load_model()
     mock_load_state_dict.assert_called_once()
+
 
 @patch("agent.XrayAgent.json.dump")
 @patch("builtins.open")
@@ -296,7 +335,7 @@ def test_save_history_and_results_success(mock_exists, mock_makedirs, mock_open,
     first_call_args, _ = mock_json_dump.call_args_list[0]
     second_call_args, _ = mock_json_dump.call_args_list[1]
     assert first_call_args[0] == fake_history
-    assert second_call_args[0] == fake_results
+    assert second_call_args[0] == {"hyperparameters": dummy_agent.hparams, "test_results": fake_results}
 
 
 @patch("agent.XrayAgent.json.dump")
@@ -316,17 +355,3 @@ def test_save_history_and_results_exception(mock_logging_error, mock_exists, moc
     logged_message = mock_logging_error.call_args[0][0]
     assert "We cannot save the history" in logged_message
     assert "Disk full" in logged_message
-
-
-
-
-
-
-
-
-
-
-
-
-
-

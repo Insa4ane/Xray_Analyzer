@@ -19,7 +19,7 @@ def main():
 
     X = X_train[:32].to(agent.device)
     y = y_train[:32].to(agent.device).view(-1, 1)
-    logging.info(f"Batch: {len(y)} zdjęć, klasa 1: {int(y.sum().item())}, klasa 0: {int((1 - y).sum().item())}")
+    logging.info(f"Batch: {len(y)} zdjec, klasa 1: {int(y.sum().item())}, klasa 0: {int((1 - y).sum().item())}")
 
     criterion = tc.nn.BCEWithLogitsLoss()
     optimizer = tc.optim.Adam(agent.parameters(), lr=1e-3)
