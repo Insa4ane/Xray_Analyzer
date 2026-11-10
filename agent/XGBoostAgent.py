@@ -31,6 +31,7 @@ class XGBoostAgent:
         all_features = []
         with tc.no_grad():
             for batch_X, in dataloader:
+                batch_X = batch_X.to(self.agent.device)
                 features = self.agent.feature_extractor(batch_X)
                 features_flattened = features.view(features.size(0), -1)
                 all_features.append(features_flattened.cpu().numpy())
