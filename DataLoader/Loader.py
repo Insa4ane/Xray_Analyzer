@@ -17,11 +17,13 @@ class DataLoader:
     def dataset_download():
         return kagglehub.dataset_download(PATH)
 
-    def process_image(self, image_path:str):
+    def process_image(self, image_path:str, clipLimit=2.0, tileGridSize=(8,8)):
         try:
             img_array = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
             if img_array is None:
                 return None
+            clahe = cv2.createCLAHE(clipLimit=clipLimit, tileGridSize=tileGridSize) #better contrast, if sth is not that way you want, you'll change parameters (e.g (10,10))
+            img_array = clahe.apply(img_array) #we apply the contrast
             return cv2.resize(img_array, (self.size, self.size))
         except Exception as e:
             logging.warning(f"Warning! {e}")
