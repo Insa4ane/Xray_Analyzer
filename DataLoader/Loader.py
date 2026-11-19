@@ -1,22 +1,19 @@
 import os
 import numpy as np
 import torch as tc
-from config.config import PATH, CATEGORIES, IMG_SIZE
-import kagglehub
+from config.config import META_DIR, CATEGORIES, IMG_SIZE, CHECXPERT_FILE, SPLIT_FILE, META_FILE, DROP_LABELS
 import cv2
 import random
 import logging
 from sklearn.model_selection import train_test_split
+import pandas as pd
 class DataLoader:
 
     def __init__(self, is_required_to_download:bool = True):
-        self.path=self.dataset_download() if is_required_to_download else None
         self.size=IMG_SIZE
+        self.meta_dir=META_DIR #directory for metadata
 
-    @staticmethod
-    def dataset_download():
-        return kagglehub.dataset_download(PATH)
-
+    #process image for pyspark
     def process_image(self, image_path:str, clipLimit=2.0, tileGridSize=(8,8)):
         try:
             img_array = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
@@ -29,48 +26,38 @@ class DataLoader:
             logging.warning(f"Warning! {e}")
             return None
 
-    def build_dataset(self, base_directory:str): #function return vector if photo is normal return photo and 1, else photo and 0 ->it is set for AI agent
-        dataset=[]
-        for category, label in CATEGORIES.items():
-            category_path = os.path.join(base_directory, category)
-            if os.path.exists(category_path):
-                for file_name in os.listdir(category_path):
-                    img_path= os.path.join(category_path, file_name)
-                    img_array = self.process_image(img_path)
-                    if img_array is not None:
-                        dataset.append([img_array, label])
-            else:
-                logging.error(f"Category {category} is not exist")
-                raise FileNotFoundError(f"{category_path} is not exist")
-        random.shuffle(dataset)
+    def build_dataset(self):
+        if self.meta_dir is None or not os.path.isdir(self.meta_dir):
+            logging.error(f"Error! meta_dir '{self.meta_dir}' does not exist (set META_DIR in .env)")
+            raise FileNotFoundError(self.meta_dir)
+
+        chex=pd.read_csv(os.path.join(self.meta_dir, CHECXPERT_FILE))
+        split=pd.read_csv(os.path.join(self.meta_dir, SPLIT_FILE))
+        meta=pd.read_csv(os.path.join(self.meta_dir, META_FILE), usecols=["dicom_id", "ViewPosition"])
+        if chex.empty or split.empty or meta.empty:
+            logging.error(f"Error! {chex.shape} or {split.shape} or {meta.shape} are empty")
+            raise ValueError(f"{chex.shape} and {split.shape} or {meta.shape} are empty")
+        merge=pd.merge(split, meta, on='dicom_id')
+        merge=merge[merge["ViewPosition"].isin(['AP', 'PA'])]
+        dataset=pd.merge(merge, chex, on=['study_id', 'subject_id']) #merged arrays
+        subject = dataset["subject_id"].astype(str)
+        dataset['path']= (
+                "files/p" + subject.str[:2]
+        + "/p" + subject
+        + "/s" + dataset["study_id"].astype(str)
+        + "/" + dataset["dicom_id"] + ".jpg"
+        )
+        dataset=dataset.drop(columns=DROP_LABELS)
         return dataset
 
     def split_data(self): #main function
-        train_dir = os.path.join(self.path,'chest_xray', 'train')
-        test_dir = os.path.join(self.path,'chest_xray', 'test')
-        train = self.build_dataset(train_dir)
-        test = self.build_dataset(test_dir)
+        dataset = self.build_dataset() #build dataset
+        #split for train/test sets
+        train=dataset[dataset["split"] == 'train']
+        test=dataset[dataset["split"] == 'test']
+        val=dataset[dataset["split"] == 'validate']
+        return train, val, test
 
-        if not train or not test:
-            logging.error(f"Error! {train} or {test} or both are empty")
-            raise FileNotFoundError(f"{train} and {test} are empty")
-
-        result_test = self.prepare_for_training(test)
-        result_train = self.prepare_for_training(train)
-
-        if result_test is None or result_train is None:
-            logging.error("Error! prepare_for_training failed for train and/or test set")
-            raise ValueError("prepare_for_training returned None for train and/or test set")
-
-        X_test, y_test = result_test
-        X_train, y_train = result_train
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_train, y_train,
-            test_size=0.15,
-            stratify=y_train,
-            random_state=42
-        )
-        return X_train, X_test, y_train, y_test, X_val, y_val
 
     def prepare_for_training(self, dataset:list[list]):
         X=[]
@@ -99,9 +86,6 @@ class DataLoader:
             folder_path = os.path.join(train_dir, category)
             counted_photos[category] = len(os.listdir(folder_path))
         return counted_photos
-
-
-
 
 
 

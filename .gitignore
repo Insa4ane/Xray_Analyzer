@@ -5,3 +5,4 @@ train/sanity_check.log
 Model_CNN/
 Model_XGB/
 History/
+config/meta/

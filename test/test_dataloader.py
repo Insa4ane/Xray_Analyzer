@@ -1,12 +1,12 @@
 from unittest.mock import patch
-
+import pandas as pd
 import cv2
 import numpy as np
 import pytest
 import torch as tc
 
 from DataLoader.Loader import DataLoader
-from config.config import PATH, IMG_SIZE
+from config.config import META_DIR, IMG_SIZE, CHECXPERT_FILE, SPLIT_FILE, META_FILE
 
 N = 40
 
@@ -15,6 +15,36 @@ N = 40
 def loader_instance():
     with patch("DataLoader.Loader.kagglehub.dataset_download", return_value="C:/fake/path"):
         return DataLoader()
+@pytest.fixture
+def meta_dir(tmp_path):
+    split = pd.DataFrame({
+        "dicom_id":   ["d1", "d2", "d3", "d4", "d5"],
+        "study_id":   [1, 1, 2, 3, 4],
+        "subject_id": [10000001, 10000001, 10000002, 10000003, 10000004],
+        "split":      ["train", "train", "test", "validate", "validate"],
+    })
+    meta = pd.DataFrame({
+        "dicom_id":     ["d1", "d2", "d3", "d4", "d5"],
+        "ViewPosition": ["PA", "LATERAL", "AP", "LATERAL", "PA"],
+    })
+    chex = pd.DataFrame({
+        "subject_id": [10000001, 10000002, 10000003, 10000004],
+        "study_id":   [1, 2, 3, 4],
+        "Pneumonia":  [1.0, 0.0, -1.0, 0.0],
+        "Fracture":   [0.0, 0.0, 0.0, 0.0],
+        "Cardiomegaly": [0.0, 0.0, 0.0, 0.0],
+        "Enlarged Cardiomediastinum": [0.0, 0.0, 0.0, 0.0],
+    })
+    split.to_csv(tmp_path / SPLIT_FILE, index=False, compression="gzip")
+    meta.to_csv(tmp_path / META_FILE, index=False, compression="gzip")
+    chex.to_csv(tmp_path / CHECXPERT_FILE, index=False, compression="gzip")
+    return str(tmp_path)
+
+@pytest.fixture
+def loader(meta_dir):
+    loader = DataLoader()
+    loader.meta_dir = meta_dir
+    return loader
 
 
 def fake_splits():
@@ -30,29 +60,6 @@ def run_split(loader_instance):
     with patch.object(DataLoader, "build_dataset", side_effect=[["fake_train_item"], ["fake_test_item"]]), \
          patch.object(DataLoader, "prepare_for_training", side_effect=[test, train]):
         return loader_instance.split_data()
-
-
-
-@patch("DataLoader.Loader.kagglehub.dataset_download")
-def test_dataloader_initialization(mock_download):
-    mock_download.return_value = "C:/fake/path"
-    loader = DataLoader()
-
-    assert loader is not None
-    assert loader.path == "C:/fake/path"
-    assert loader.size == IMG_SIZE
-    mock_download.assert_called_once_with(PATH)
-
-
-@patch("DataLoader.Loader.kagglehub.dataset_download")
-def test_dataloader_dataset_download(mock_download):
-    mock_download.return_value = "C:/fake/path"
-    loader = DataLoader()
-    result = loader.dataset_download()
-
-    assert result == "C:/fake/path"
-
-
 
 @patch("DataLoader.Loader.cv2.imread")
 @patch("DataLoader.Loader.cv2.resize")
@@ -74,23 +81,35 @@ def test_process_image_unreadable_file_returns_none(mock_imread, loader_instance
     assert loader_instance.process_image("fake/broken.jpg") is None
 
 
-@patch("DataLoader.Loader.os.path.exists")
-@patch("DataLoader.Loader.os.listdir")
-@patch("DataLoader.Loader.CATEGORIES", {"fake_category": 1})
-@patch.object(DataLoader, "process_image")
-def test_build_dataset(mock_process, mock_listdir, mock_exist, loader_instance):
-    mock_exist.return_value = True
-    mock_listdir.return_value = ["img1.jpg", "img2.jpg"]
+def test_build_dataset_keeps_only_frontal_views(loader):
+    df = loader.build_dataset()
+    assert len(df) == 3
+    assert set(df["split"]) == {"train", "test", "validate"}
+    assert "Fracture" not in df.columns
 
-    fake_img = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
-    mock_process.return_value = fake_img
-    fake_dir = "C:/fake/path"
-    result = loader_instance.build_dataset(fake_dir)
 
-    assert result is not None
-    assert len(result) == 2
-    assert np.array_equal(result[0][0], fake_img)
-    assert result[0][1] == 1
+def test_build_dataset_builds_path(loader):
+    df = loader.build_dataset()
+    path = df.loc[df["subject_id"] == 10000001, "path"].iloc[0]
+    assert path == "files/p10/p10000001/s1/d1.jpg"
+
+
+def test_build_dataset_labels(loader):
+    df = loader.build_dataset()
+    labels = dict(zip(df["subject_id"], df["Pneumonia"]))
+    assert labels[10000001] == 1
+    assert labels[10000002] == 0
+
+
+def test_no_patient_in_two_splits(loader):
+    df = loader.build_dataset()
+    assert df.groupby("subject_id")["split"].nunique().max() == 1
+
+
+def test_missing_dir_raises(loader):
+    loader.meta_dir = "nie/ma/takiego/folderu"
+    with pytest.raises(FileNotFoundError):
+        loader.build_dataset()
 
 
 @patch("DataLoader.Loader.os.listdir", return_value=["a.jpg", "b.jpg", "c.jpg"])
@@ -99,57 +118,37 @@ def test_count_training_images_per_class(mock_listdir, loader_instance):
     result = loader_instance.count_training_images_per_class()
     assert result == {"NORMAL": 3, "PNEUMONIA": 3}
 
+def test_split_data_sizes(loader):
+    train, test, val = loader.split_data()
+    assert (len(train), len(test), len(val)) == (1, 1, 1)
 
 
-@patch.object(DataLoader, "build_dataset")
-@patch.object(DataLoader, "prepare_for_training")
-def test_split_data(mock_prepare, mock_build, loader_instance):
-    mock_build.side_effect = [["fake_train_item"], ["fake_test_item"]]
-    (X_train_mock, y_train_mock), (X_test_mock, y_test_mock) = fake_splits()
-    mock_prepare.side_effect = [(X_test_mock, y_test_mock), (X_train_mock, y_train_mock)]
-
-    X_train, X_test, y_train, y_test, X_val, y_val = loader_instance.split_data()
-
-    assert np.array_equal(X_test, X_test_mock)
-    assert np.array_equal(y_test, y_test_mock)
-
-    assert len(X_val) == 6
-    assert len(X_train) == 34
-    assert len(X_train) == len(y_train)
-    assert len(X_val) == len(y_val)
-    assert len(X_test) == len(y_test)
-
-    train_ids = set(np.asarray(X_train).flatten().tolist())
-    val_ids = set(np.asarray(X_val).flatten().tolist())
-    assert train_ids.isdisjoint(val_ids)
-    assert train_ids | val_ids == set(X_train_mock.flatten().tolist())
-
-    assert np.asarray(y_val).sum() == 3
-    assert np.asarray(y_train).sum() == 17
+def test_split_data_rows_belong_to_right_set(loader):
+    train, val, test = loader.split_data()
+    assert (train["split"] == "train").all()
+    assert (test["split"] == "test").all()
+    assert (val["split"] == "validate").all()
 
 
-def test_split_data_is_reproducible(loader_instance):
-    X_train_1, _, _, _, X_val_1, y_val_1 = run_split(loader_instance)
-    X_train_2, _, _, _, X_val_2, y_val_2 = run_split(loader_instance)
-
-    assert np.array_equal(X_val_1, X_val_2)
-    assert np.array_equal(y_val_1, y_val_2)
-    assert np.array_equal(X_train_1, X_train_2)
+def test_split_data_covers_whole_dataset(loader):
+    dataset = loader.build_dataset()
+    train, val, test = loader.split_data()
+    assert len(train) + len(test) + len(val) == len(dataset)
 
 
-@patch.object(DataLoader, "build_dataset")
-def test_split_data_empty_dataset_raises(mock_build, loader_instance):
-    mock_build.side_effect = [[], ["fake_test_item"]]
-    with pytest.raises(FileNotFoundError):
-        loader_instance.split_data()
+def test_split_data_no_patient_overlap(loader):
+    train, val, test = loader.split_data()
+    s_train, s_val, s_test = (set(t["subject_id"]) for t in (train, test, val))
+    assert s_train.isdisjoint(s_test)
+    assert s_train.isdisjoint(s_val)
+    assert s_test.isdisjoint(s_val)
 
 
-@patch.object(DataLoader, "build_dataset")
-@patch.object(DataLoader, "prepare_for_training", return_value=None)
-def test_split_data_prepare_failure_raises(mock_prepare, mock_build, loader_instance):
-    mock_build.side_effect = [["fake_train_item"], ["fake_test_item"]]
-    with pytest.raises(ValueError):
-        loader_instance.split_data()
+def test_split_data_is_reproducible(loader):
+    first = loader.split_data()
+    second = loader.split_data()
+    for a, b in zip(first, second):
+        pd.testing.assert_frame_equal(a, b)
 
 
 
